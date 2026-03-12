@@ -9,7 +9,8 @@ $env:PYTHONNOUSERSITE = "1"
 $base = "./real_data_relighting"
 $fix = "preprocessed_lighting_data"
 $models = @("Mandalorian_helmet", "dragon", "duck", "statue_of_hand", "vege_dog")
-
+ 
+ 
 foreach ($m in $models) {
     # 补齐 input_image 下的幽灵文件夹
     $d1 = "$base/$m/input_image/$fix"
