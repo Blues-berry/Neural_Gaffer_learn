@@ -1,11 +1,43 @@
-.mp4
+# === 视频与渲染输出 ===
+*.mp4
+*.gif
+*.avi
+# 渲染结果目录
+neural_gaffer_3d_relighting/3d_logs/
+test_results/
+real_data_relighting/
+
+# === 模型权重与日志 ===
 logs/
-models/checkpoints
-neural_gaffer_3d_relighting/3d_logs
-3d_relighting_data
-prepocessed_3d_relighting_data
-remove_data.ipynb
+models/checkpoints/
+wandb/
+*.ckpt
+*.safetensors
+*.pth
+
+# === 数据集目录 (通常体积巨大，不建议入库) ===
+dataset/
+3d_relighting_data/
+prepocessed_3d_relighting_data/
+preprocessed_data/
+preprocessed_lighting_data/
+
+# === Python 环境与缓存 ===
 __pycache__/
 *.py[cod]
 *$py.class
-wandb/
+.env
+.venv
+env/
+venv/
+build/
+dist/
+
+# === 编辑器与系统文件 ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# === Jupyter Notebook 缓存 ===
+.ipynb_checkpoints/
