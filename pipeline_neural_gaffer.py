@@ -5,8 +5,9 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 import torch.nn.functional as F
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPImageProcessor as CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 import einops
+from diffusers.utils.torch_utils import randn_tensor
 
 # from ...configuration_utils import FrozenDict
 # from ...models import AutoencoderKL, UNet2DConditionModel
@@ -16,7 +17,7 @@ import einops
 #     is_accelerate_available,
 #     is_accelerate_version,
 #     logging,
-#     randn_tensor,
+#     
 #     replace_example_docstring,
 # )
 # from ..pipeline_utils import DiffusionPipeline
@@ -26,12 +27,13 @@ import einops
 from diffusers import AutoencoderKL, UNet2DConditionModel, DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils.torch_utils import randn_tensor
 from diffusers.utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    randn_tensor,
+    
     replace_example_docstring,
 )
 
@@ -87,7 +89,7 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -99,7 +101,7 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()

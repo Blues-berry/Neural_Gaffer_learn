@@ -1,4 +1,5 @@
-pretrained_model_name_or_path = kxic/zero123-xl
+# 指向 snapshots 下的具体哈希值目录（这是最完整的一层）
+pretrained_model_name_or_path = /4T/huggingface_cache/models--kxic--zero123-xl/snapshots/7d8aec2223b93e84eb26893d1e732e013523474b
 output_dir = logs/neural_gaffer_training
 gradient_accumulation_steps = 1
 mixed_precision = fp16 
@@ -8,7 +9,15 @@ num_validation_images = 2
 num_validation_batches = 30
 
 
-train_img_dir = training_img_data_subset
-train_lighting_dir = training_lighting_data_subset
-val_lighting_dir = /scratch/datasets/hj453/objaverse-rendering/filtered_V2/val_preprocessed_environment_resized/
-val_img_dir = /scratch/datasets/hj453/objaverse-rendering/filtered_V2/val_rendered_images_resized/validation/
+# --- 训练集真实路径 ---
+
+# 图像：指向包含大量 .png/.jpg 的那个子目录
+train_img_dir = /4T/CXY/Neural_Gaffer/training_data/images/training_img_data_subset
+# 光照：指向 subset 下的 LDR 目录（通常训练用 LDR）
+train_lighting_dir = /4T/CXY/Neural_Gaffer/training_data/lighting/training_lighting_data_subset
+
+# --- 验证集真实路径 ---
+# 图像：截图显示是这个 resized 目录
+val_img_dir = /4T/CXY/Neural_Gaffer/validation_data/images/val_rendered_images_resized/validation
+# 光照：指向 val 环境下的 seen_lighting 目录
+val_lighting_dir = /4T/CXY/Neural_Gaffer/validation_data/lighting/val_preprocessed_environment_resized
