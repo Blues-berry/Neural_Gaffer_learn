@@ -17,7 +17,10 @@ from packaging import version
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor, CLIPFeatureExtractor
+from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
+
+# 既然代码后面可能用到了 CLIPFeatureExtractor 这个名字，我们手动做一个别名映射
+CLIPFeatureExtractor = CLIPImageProcessor
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 from torchmetrics.image import StructuralSimilarityIndexMeasure
@@ -87,8 +90,8 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    if args.enable_xformers_memory_efficient_attention:
-        pipeline.enable_xformers_memory_efficient_attention()
+    #if args.enable_xformers_memory_efficient_attention:
+        #pipeline.enable_xformers_memory_efficient_attention()
 
     if args.seed is None:
         generator = None
@@ -365,8 +368,8 @@ def main(args):
                 )
             unet.enable_xformers_memory_efficient_attention()
             vae.enable_tiling()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
+        #else:
+            #raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()

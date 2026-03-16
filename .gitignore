@@ -1,5 +1,8 @@
 .mp4
 logs/
+subdataset/
+training_data/
+validation_data/
 models/checkpoints
 neural_gaffer_3d_relighting/3d_logs
 3d_relighting_data
