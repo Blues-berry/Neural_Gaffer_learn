@@ -8,6 +8,7 @@ neural_gaffer_3d_relighting/3d_logs
 3d_relighting_data
 prepocessed_3d_relighting_data
 remove_data.ipynb
+
 __pycache__/
 *.py[cod]
 *$py.class
