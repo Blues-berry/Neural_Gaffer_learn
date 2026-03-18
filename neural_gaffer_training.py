@@ -141,9 +141,13 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         prediction_image_sample1_list = []
         for i in range(batchsize):
             prediction_image_sample0_list.append(np.array(cur_predicted_images[0][i]))
-            prediction_image_sample1_list.append(np.array(cur_predicted_images[1][i]))
+            if len(cur_predicted_images) > 1:
+                prediction_image_sample1_list.append(np.array(cur_predicted_images[1][i]))
         prediction_image_sample0 = np.array(prediction_image_sample0_list, dtype=np.float32) / 255.0
-        prediction_image_sample1 = np.array(prediction_image_sample1_list, dtype=np.float32) / 255.0
+        if len(cur_predicted_images) > 1:
+            prediction_image_sample1 = np.array(prediction_image_sample1_list, dtype=np.float32) / 255.0
+        else:
+            prediction_image_sample1 = prediction_image_sample0  # Use sample0 if only 1 sample
 
         predicted_images.append(prediction_image_sample0)
         gt_images.append(gt_image_npy)
