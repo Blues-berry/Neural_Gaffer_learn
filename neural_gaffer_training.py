@@ -891,7 +891,10 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
 
-                    if validation_dataloader_random_light_condition is not None and (global_step % args.validation_steps == 0 or global_step == (100 +initial_global_step)):
+                    initial_val_step = getattr(args, 'initial_validation_step', -1)
+                    initial_val_trigger = (initial_val_step > 0 and global_step == (initial_val_step + initial_global_step))
+                    
+                    if validation_dataloader_random_light_condition is not None and (global_step % args.validation_steps == 0 or initial_val_trigger):
                         if args.use_ema:
                             # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                             ema_unet.store(unet.parameters())
@@ -914,7 +917,7 @@ def main(args):
                         step_log.update(temp_log)
                         
 
-                    if validation_dataloader_unseen_lighting is not None and (global_step % args.validation_steps == 0 or global_step == (100 + initial_global_step)):
+                    if validation_dataloader_unseen_lighting is not None and (global_step % args.validation_steps == 0 or initial_val_trigger):
                         if args.use_ema:
                             # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                             ema_unet.store(unet.parameters())
@@ -936,7 +939,7 @@ def main(args):
                             ema_unet.restore(unet.parameters())
                         step_log.update(temp_log)
                         
-                    if validation_dataloader_seen_lighting is not None and (global_step % args.validation_steps == 0 or global_step == (100 + initial_global_step)):
+                    if validation_dataloader_seen_lighting is not None and (global_step % args.validation_steps == 0 or initial_val_trigger):
                         if args.use_ema:
                             # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                             ema_unet.store(unet.parameters())
@@ -957,7 +960,7 @@ def main(args):
                             # Switch back to the original UNet parameters.
                             ema_unet.restore(unet.parameters())
                         step_log.update(temp_log)
-                    if training_dataloader_unseen_lighting is not None and (global_step % args.validation_steps == 0 or global_step == (100 + initial_global_step)):
+                    if training_dataloader_unseen_lighting is not None and (global_step % args.validation_steps == 0 or initial_val_trigger):
                         if args.use_ema:
                             # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                             ema_unet.store(unet.parameters())
@@ -980,7 +983,7 @@ def main(args):
                         step_log.update(temp_log)   
                           
                             
-                    if train_log_dataloader is not None and (global_step % args.validation_steps == 0 or global_step == (100 + initial_global_step)):
+                    if train_log_dataloader is not None and (global_step % args.validation_steps == 0 or initial_val_trigger):
                         if args.use_ema:
                             # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                             ema_unet.store(unet.parameters())
