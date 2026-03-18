@@ -240,6 +240,32 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
 
+    # Physical constraints for specular/highlight enhancement
+    parser.add_argument(
+        "--use_physical_constraints",
+        action="store_true",
+        default=False,
+        help="Whether to use physical constraints for specular/highlight enhancement during training."
+    )
+    parser.add_argument(
+        "--albedo_consistency_weight",
+        type=float,
+        default=0.1,
+        help="Weight for albedo consistency loss in physical constraints."
+    )
+    parser.add_argument(
+        "--specular_awareness_weight",
+        type=float,
+        default=0.05,
+        help="Weight for specular awareness loss in physical constraints."
+    )
+    parser.add_argument(
+        "--roughness_weight",
+        type=float,
+        default=0.02,
+        help="Weight for roughness loss in physical constraints."
+    )
+
     parser.add_argument(
         "--train_img_dir",
         type=str,

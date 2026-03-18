@@ -1,0 +1,71 @@
+# Neural Gaffer Training Configuration with Physical Constraints for Specular/Highlight Enhancement
+# 
+# This configuration enables physical-based constraints to improve specular handling
+# without increasing network complexity at inference time.
+#
+# Usage:
+#   python neural_gaffer_training.py --config configs/highlight_aware_training.yaml
+#
+# Or override specific parameters:
+#   python neural_gaffer_training.py --use_physical_constraints --albedo_consistency_weight 0.15 --specular_awareness_weight 0.1
+
+# Base model
+pretrained_model_name_or_path: "kxic/zero123-xl"
+
+# Output
+output_dir: "./output_highlight_aware"
+save_dir: "./"
+
+# Training parameters
+num_train_epochs: 30
+training_batch_size: 4
+gradient_accumulation_steps: 1
+learning_rate: 1.0e-4
+lr_scheduler: "constant"
+lr_warmup_steps: 100
+max_train_steps: 100000
+
+# Model
+resolution: 256
+use_ema: true
+enable_xformers_memory_efficient_attention: false
+gradient_checkpointing: false
+
+# Data
+train_img_dir: '/scratch/datasets/hj453/objaverse-rendering/filtered_V2/rendered_images_resized'
+train_lighting_dir: '/scratch/datasets/hj453/objaverse-rendering/filtered_V2/preprocessed_environment_resized/'
+val_img_dir: './Neural_Gaffer/preprocessed_data'
+val_lighting_dir: './preprocessed_lighting_data'
+
+# Validation
+validation_steps: 1000
+num_validation_images: 2
+num_validation_batches: 10
+
+# Logging
+report_to: "wandb"
+tracker_project_name: "neural_gaffer_highlight_aware"
+logging_steps: 50
+checkpointing_steps: 5000
+
+# Seed
+seed: 42
+
+# ========== PHYSICAL CONSTRAINTS FOR SPECULAR/HIGHLIGHT ENHANCEMENT ==========
+# These constraints are ONLY active during training and do NOT affect inference!
+use_physical_constraints: true
+
+# Albedo consistency: Same object should have consistent intrinsic color under different lighting
+# Higher weight = stronger constraint on albedo consistency
+albedo_consistency_weight: 0.1
+
+# Specular awareness: Ensure high-intensity regions (highlights) are handled correctly
+# Higher weight = more emphasis on correct specular prediction
+specular_awareness_weight: 0.08
+
+# Roughness: Material roughness-aware loss
+# Helps model learn material-appropriate specular behavior
+roughness_weight: 0.03
+
+# Compute detailed metrics during validation
+compute_metrics: true

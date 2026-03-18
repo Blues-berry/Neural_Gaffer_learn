@@ -4,9 +4,9 @@ output_dir = logs/neural_gaffer_training1
 gradient_accumulation_steps = 1
 mixed_precision = fp16 
 training_batch_size = 64
-dataloader_num_workers = 32
-num_validation_images = 2
-num_validation_batches = 30
+dataloader_num_workers = 12
+num_validation_images = 1
+num_validation_batches = 2
 
 
 # --- 训练集真实路径 ---

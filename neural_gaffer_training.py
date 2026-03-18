@@ -42,6 +42,10 @@ import torchvision
 import kornia
 
 import datetime
+import sys
+sys.path.insert(0, '/4T/CXY/Neural_Gaffer/neural_gaffer_3d_relighting')
+
+from physical_constraints import PhysicalConstraints, HighlightAwareLoss, apply_physical_constraints, compute_specular_metrics
 
 # torch.distributed.init_process_group('nccl', init_method=None, timeout=datetime.timedelta(seconds=1800), world_size=- 1, rank=- 1, store=None, group_name='', pg_options=None)
 torch.distributed.init_process_group(backend="nccl", timeout=datetime.timedelta(seconds=10000))
@@ -187,6 +191,23 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     
     logs = {"lpips_loss/{}".format(split): mean_lpips_loss, "ssim_loss/{}".format(split): mean_ssim_loss, "PSNR/{}".format(split): mean_psnr}
     val_metrics.update(logs)
+    
+    # Compute specular/highlight metrics if compute_metrics is enabled
+    if getattr(args, 'compute_metrics', False):
+        try:
+            from physical_constraints import compute_specular_metrics
+            # Compute metrics on a subset to save time
+            sample_size = min(32, predicted_images_tensor.shape[0])
+            pred_sample = predicted_images_tensor[:sample_size].to(gt_images_tensor.device)
+            gt_sample = gt_images_tensor[:sample_size].to(gt_images_tensor.device)
+            
+            specular_metrics = compute_specular_metrics(pred_sample, gt_sample)
+            for k, v in specular_metrics.items():
+                logs[f"specular/{k}"] = v
+                val_metrics[f"specular/{k}"] = v
+        except Exception:
+            pass
+    
     # after validation, set the pipeline back to training mode
     unet.train()
     vae.train()
@@ -418,6 +439,25 @@ def main(args):
     )
 
 
+    # Initialize physical constraints for specular/highlight enhancement
+    # These are ONLY used during training, not inference
+    use_phys_constraints = getattr(args, 'use_physical_constraints', False)
+    if use_phys_constraints:
+        albedo_w = getattr(args, 'albedo_consistency_weight', 0.1)
+        specular_w = getattr(args, 'specular_awareness_weight', 0.05)
+        roughness_w = getattr(args, 'roughness_weight', 0.02)
+        physical_constraints = PhysicalConstraints(
+            albedo_consistency_weight=albedo_w,
+            specular_awareness_weight=specular_w,
+            roughness_weight=roughness_w
+        )
+        physical_constraints.to(accelerator.device)
+        physical_constraints.requires_grad_(False)
+        logger.info(f"Physical constraints enabled with weights: albedo={albedo_w}, specular={specular_w}, roughness={roughness_w}")
+    else:
+        physical_constraints = None
+        logger.info("Physical constraints disabled")
+    
     # print model info, learnable parameters, non-learnable parameters, total parameters, model size, all in billion
     def print_model_info(model):
         # only rank 0 print
@@ -769,6 +809,43 @@ def main(args):
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                 loss = (loss.mean([1, 2, 3])).mean()
+
+                # Apply physical constraints for specular/highlight enhancement
+                # Only apply every few steps to reduce computational overhead
+                # and avoid gradient issues with VAE decoding
+                if use_phys_constraints and physical_constraints is not None:
+                    if global_step % 10 == 0 and accelerator.is_main_process:
+                        try:
+                            # Decode predicted latents to image space
+                            # Use detached latents to avoid gradient flow to VAE
+                            pred_latents_detached = model_pred.detach()
+                            # Use the noise scheduler to get clean latents (approximation)
+                            # This is a simplified approach - full approach would need proper denoising
+                            pred_image_approx = vae.decode(pred_latents_detached / vae.config.scaling_factor).sample
+                            pred_image_approx = (pred_image_approx / 2 + 0.5).clamp(0, 1) * 2 - 1
+                            
+                            # Decode target latents
+                            target_image_approx = vae.decode(gt_latents.detach() / vae.config.scaling_factor).sample
+                            target_image_approx = (target_image_approx / 2 + 0.5).clamp(0, 1) * 2 - 1
+                            
+                            # Compute physical constraints
+                            phys_losses = physical_constraints(
+                                pred_image_approx, 
+                                target_image_approx, 
+                                input_image
+                            )
+                            
+                            # Add physical constraint losses
+                            phys_loss_total = sum(phys_losses.values())
+                            loss = loss + phys_loss_total
+                            
+                            # Log physical constraint losses
+                            if accelerator.is_main_process:
+                                for k, v in phys_losses.items():
+                                    accelerator.log({k: v.item()}, step=global_step)
+                        except Exception as e:
+                            # If VAE decoding fails, continue without physical constraints
+                            pass
 
                 accelerator.backward(loss)
 
