@@ -1,6 +1,6 @@
 # 指向 snapshots 下的具体哈希值目录（这是最完整的一层）
 pretrained_model_name_or_path = /4T/huggingface_cache/models--kxic--zero123-xl/snapshots/7d8aec2223b93e84eb26893d1e732e013523474b
-output_dir = logs/neural_gaffer_training
+output_dir = logs/neural_gaffer_training1
 gradient_accumulation_steps = 1
 mixed_precision = fp16 
 training_batch_size = 64
