@@ -1,5 +1,6 @@
 .mp4
 logs/
+scripts/Objavarse_rendering/
 subdataset/
 training_data/
 validation_data/
