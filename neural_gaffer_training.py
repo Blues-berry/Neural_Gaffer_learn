@@ -42,10 +42,6 @@ import torchvision
 import kornia
 
 import datetime
-import sys
-sys.path.insert(0, '/4T/CXY/Neural_Gaffer/neural_gaffer_3d_relighting')
-
-from physical_constraints import PhysicalConstraints, HighlightAwareLoss, apply_physical_constraints, compute_specular_metrics
 
 # torch.distributed.init_process_group('nccl', init_method=None, timeout=datetime.timedelta(seconds=1800), world_size=- 1, rank=- 1, store=None, group_name='', pg_options=None)
 torch.distributed.init_process_group(backend="nccl", timeout=datetime.timedelta(seconds=10000))
@@ -75,6 +71,31 @@ def image_grid(imgs, rows, cols):
     for i, img in enumerate(imgs):
         grid.paste(img, box=(i % cols * w, i // cols * h))
     return grid
+
+
+def compute_specular_metrics(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.8) -> dict:
+    pred = (pred + 1) / 2
+    target = (target + 1) / 2
+
+    pred_lum = 0.299 * pred[:, 0] + 0.587 * pred[:, 1] + 0.114 * pred[:, 2]
+    target_lum = 0.299 * target[:, 0] + 0.587 * target[:, 1] + 0.114 * target[:, 2]
+
+    pred_highlight = pred_lum > threshold
+    target_highlight = target_lum > threshold
+
+    metrics = {}
+    if pred_highlight.sum() > 0 and target_highlight.sum() > 0:
+        intersection = (pred_highlight & target_highlight).float().sum()
+        union = (pred_highlight | target_highlight).float().sum()
+        metrics["highlight_iou"] = (intersection / (union + 1e-6)).item()
+
+        pred_highlight_intensity = pred_lum[pred_highlight].mean()
+        target_highlight_intensity = target_lum[target_highlight].mean()
+        metrics["highlight_intensity_error"] = abs(
+            pred_highlight_intensity - target_highlight_intensity
+        ).item()
+
+    return metrics
 
 def log_validation(validation_dataloader, vae, image_encoder, feature_extractor, unet, args, accelerator, weight_dtype, split="val", cur_step=0):
     logger.info("Running {} validation... ".format(split))
@@ -136,6 +157,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         envir_map_target_ldr_npy = 0.5 * (np.array(target_envmap_ldr.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
         gt_image_npy = 0.5 * (np.array(gt_image.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
         input_image_npy = 0.5 * (np.array(input_image.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
+        highlight_mask_npy, highlight_weight_npy = build_highlight_visualizations(gt_image, args, (h, w))
         
         prediction_image_sample0_list = []
         prediction_image_sample1_list = []
@@ -161,12 +183,31 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         prediction_image_sample1_new = prediction_image_sample1.reshape((1,-1, w, 3)).squeeze()
         envir_map_target_hdr_npy_new = envir_map_target_hdr_npy.reshape((1,-1, w, 3)).squeeze()
         envir_map_target_ldr_npy_new = envir_map_target_ldr_npy.reshape((1,-1, w, 3)).squeeze()
-        concatenated_image = np.concatenate([input_image_npy_new, gt_image_npy_new, prediction_image_sample0_new, prediction_image_sample1_new, envir_map_target_ldr_npy_new, envir_map_target_hdr_npy_new], axis=1)
+        highlight_mask_npy_new = highlight_mask_npy.reshape((1,-1, w, 3)).squeeze()
+        highlight_weight_npy_new = highlight_weight_npy.reshape((1,-1, w, 3)).squeeze()
+        concatenated_image = np.concatenate(
+            [
+                input_image_npy_new,
+                gt_image_npy_new,
+                prediction_image_sample0_new,
+                prediction_image_sample1_new,
+                highlight_mask_npy_new,
+                highlight_weight_npy_new,
+                envir_map_target_ldr_npy_new,
+                envir_map_target_hdr_npy_new,
+            ],
+            axis=1,
+        )
 
         # save the concatenated image
         concatenated_image = Image.fromarray((concatenated_image * 255).astype(np.uint8))
-        # image_logs.append({"gt_image": gt_image, "envir_map_target_hdr":target_envmap_hdr, "envir_map_target_ldr":target_envmap_ldr,  "target_envmap_name":target_envmap_name, "pred_images": images, "pose": pose, "input_image": input_image})
-        image_logs.append({"result": concatenated_image})
+        image_logs.append(
+            {
+                "result": concatenated_image,
+                "highlight_mask": Image.fromarray((highlight_mask_npy_new * 255).astype(np.uint8)),
+                "highlight_weight": Image.fromarray((highlight_weight_npy_new * 255).astype(np.uint8)),
+            }
+        )
         
         
     val_metrics = {}
@@ -199,7 +240,6 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     # Compute specular/highlight metrics if compute_metrics is enabled
     if getattr(args, 'compute_metrics', False):
         try:
-            from physical_constraints import compute_specular_metrics
             # Compute metrics on a subset to save time
             sample_size = min(32, predicted_images_tensor.shape[0])
             pred_sample = predicted_images_tensor[:sample_size].to(gt_images_tensor.device)
@@ -224,6 +264,8 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
             for log_id, log in enumerate(image_logs):
                 formatted_images.append(wandb.Image(log["result"], caption="{}_result".format(log_id)))
+                formatted_images.append(wandb.Image(log["highlight_mask"], caption="{}_highlight_mask".format(log_id)))
+                formatted_images.append(wandb.Image(log["highlight_weight"], caption="{}_highlight_weight".format(log_id)))
 
             tracker.log({split: formatted_images}, step=cur_step)
         else:
@@ -281,6 +323,70 @@ def CLIP_preprocess(x):
     x = kornia.enhance.normalize(x, torch.Tensor([0.48145466, 0.4578275, 0.40821073]),
                                  torch.Tensor([0.26862954, 0.26130258, 0.27577711]))
     return x
+
+
+def compute_highlight_weight_map(
+    gt_image: torch.Tensor,
+    latent_hw: tuple[int, int],
+    threshold: float = 0.8,
+    extra_weight: float = 1.0,
+    soft_weighting: bool = False,
+    gamma: float = 2.0,
+):
+    """
+    Build a spatial weight map from the target image and downsample it to the
+    latent/noise resolution used by the diffusion loss.
+    """
+    gt_img_01 = (gt_image.float() + 1.0) / 2.0
+    luminance = (
+        0.299 * gt_img_01[:, 0:1]
+        + 0.587 * gt_img_01[:, 1:2]
+        + 0.114 * gt_img_01[:, 2:3]
+    )
+
+    if soft_weighting:
+        highlight_score = ((luminance - threshold).clamp(min=0.0) / max(1e-6, 1.0 - threshold)) ** gamma
+    else:
+        highlight_score = (luminance > threshold).float()
+
+    highlight_score = F.interpolate(
+        highlight_score,
+        size=latent_hw,
+        mode="bilinear",
+        align_corners=False,
+    )
+    return 1.0 + extra_weight * highlight_score
+
+
+def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tuple[int, int]):
+    gt_img_01 = (gt_image.float() + 1.0) / 2.0
+    luminance = (
+        0.299 * gt_img_01[:, 0:1]
+        + 0.587 * gt_img_01[:, 1:2]
+        + 0.114 * gt_img_01[:, 2:3]
+    )
+    mask = (luminance > getattr(args, "highlight_threshold", 0.8)).float()
+    weight_map = compute_highlight_weight_map(
+        gt_image=gt_image,
+        latent_hw=luminance.shape[-2:],
+        threshold=getattr(args, "highlight_threshold", 0.8),
+        extra_weight=getattr(args, "highlight_loss_weight", 1.0),
+        soft_weighting=getattr(args, "highlight_soft_weighting", False),
+        gamma=getattr(args, "highlight_gamma", 2.0),
+    )
+    weight_norm = ((weight_map - 1.0) / max(1e-6, getattr(args, "highlight_loss_weight", 1.0))).clamp(0.0, 1.0)
+
+    mask_rgb = mask.repeat(1, 3, 1, 1)
+    weight_rgb = weight_norm.repeat(1, 3, 1, 1)
+
+    if mask_rgb.shape[-2:] != output_hw:
+        mask_rgb = F.interpolate(mask_rgb, size=output_hw, mode="nearest")
+    if weight_rgb.shape[-2:] != output_hw:
+        weight_rgb = F.interpolate(weight_rgb, size=output_hw, mode="bilinear", align_corners=False)
+
+    mask_npy = np.array(mask_rgb.permute([0, 2, 3, 1]).cpu(), dtype=np.float32)
+    weight_npy = np.array(weight_rgb.permute([0, 2, 3, 1]).cpu(), dtype=np.float32)
+    return mask_npy, weight_npy
 
 def _encode_image(image_encoder, image, device, dtype, do_classifier_free_guidance):
 
@@ -443,24 +549,17 @@ def main(args):
     )
 
 
-    # Initialize physical constraints for specular/highlight enhancement
-    # These are ONLY used during training, not inference
-    use_phys_constraints = getattr(args, 'use_physical_constraints', False)
-    if use_phys_constraints:
-        albedo_w = getattr(args, 'albedo_consistency_weight', 0.1)
-        specular_w = getattr(args, 'specular_awareness_weight', 0.05)
-        roughness_w = getattr(args, 'roughness_weight', 0.02)
-        physical_constraints = PhysicalConstraints(
-            albedo_consistency_weight=albedo_w,
-            specular_awareness_weight=specular_w,
-            roughness_weight=roughness_w
+    use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
+    if use_highlight_weighted_loss:
+        logger.info(
+            "Highlight-weighted diffusion loss enabled with weight=%s threshold=%s soft=%s gamma=%s",
+            getattr(args, "highlight_loss_weight", 1.0),
+            getattr(args, "highlight_threshold", 0.8),
+            getattr(args, "highlight_soft_weighting", False),
+            getattr(args, "highlight_gamma", 2.0),
         )
-        physical_constraints.to(accelerator.device)
-        physical_constraints.requires_grad_(False)
-        logger.info(f"Physical constraints enabled with weights: albedo={albedo_w}, specular={specular_w}, roughness={roughness_w}")
     else:
-        physical_constraints = None
-        logger.info("Physical constraints disabled")
+        logger.info("Highlight-weighted diffusion loss disabled")
     
     # print model info, learnable parameters, non-learnable parameters, total parameters, model size, all in billion
     def print_model_info(model):
@@ -811,45 +910,32 @@ def main(args):
                     target = noise_scheduler.get_velocity(gt_latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                loss = (loss.mean([1, 2, 3])).mean()
+                per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                if use_highlight_weighted_loss:
+                    weight_map = compute_highlight_weight_map(
+                        gt_image=gt_image,
+                        latent_hw=per_pixel_loss.shape[-2:],
+                        threshold=getattr(args, "highlight_threshold", 0.8),
+                        extra_weight=getattr(args, "highlight_loss_weight", 1.0),
+                        soft_weighting=getattr(args, "highlight_soft_weighting", False),
+                        gamma=getattr(args, "highlight_gamma", 2.0),
+                    ).to(device=per_pixel_loss.device, dtype=per_pixel_loss.dtype)
+                    weighted_loss = per_pixel_loss * weight_map
+                    norm = weight_map.sum() * per_pixel_loss.shape[1]
+                    loss = weighted_loss.sum() / norm.clamp_min(1e-6)
 
-                # Apply physical constraints for specular/highlight enhancement
-                # Only apply every few steps to reduce computational overhead
-                # and avoid gradient issues with VAE decoding
-                if use_phys_constraints and physical_constraints is not None:
-                    if global_step % 10 == 0 and accelerator.is_main_process:
-                        try:
-                            # Decode predicted latents to image space
-                            # Use detached latents to avoid gradient flow to VAE
-                            pred_latents_detached = model_pred.detach()
-                            # Use the noise scheduler to get clean latents (approximation)
-                            # This is a simplified approach - full approach would need proper denoising
-                            pred_image_approx = vae.decode(pred_latents_detached / vae.config.scaling_factor).sample
-                            pred_image_approx = (pred_image_approx / 2 + 0.5).clamp(0, 1) * 2 - 1
-                            
-                            # Decode target latents
-                            target_image_approx = vae.decode(gt_latents.detach() / vae.config.scaling_factor).sample
-                            target_image_approx = (target_image_approx / 2 + 0.5).clamp(0, 1) * 2 - 1
-                            
-                            # Compute physical constraints
-                            phys_losses = physical_constraints(
-                                pred_image_approx, 
-                                target_image_approx, 
-                                input_image
-                            )
-                            
-                            # Add physical constraint losses
-                            phys_loss_total = sum(phys_losses.values())
-                            loss = loss + phys_loss_total
-                            
-                            # Log physical constraint losses
-                            if accelerator.is_main_process:
-                                for k, v in phys_losses.items():
-                                    accelerator.log({k: v.item()}, step=global_step)
-                        except Exception as e:
-                            # If VAE decoding fails, continue without physical constraints
-                            pass
+                    logging_steps = max(1, getattr(args, "logging_steps", 50))
+                    if accelerator.is_main_process and global_step % logging_steps == 0:
+                        accelerator.log(
+                            {
+                                "highlight_weight/mean": weight_map.mean().item(),
+                                "highlight_weight/max": weight_map.max().item(),
+                                "highlight_weight/highlight_fraction": (weight_map > 1.0).float().mean().item(),
+                            },
+                            step=global_step,
+                        )
+                else:
+                    loss = per_pixel_loss.mean()
 
                 accelerator.backward(loss)
 

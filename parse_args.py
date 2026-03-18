@@ -130,6 +130,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--logging_steps",
+        type=int,
+        default=50,
+        help="Log training metrics every N optimization steps.",
+    )
+    parser.add_argument(
         "--allow_tf32",
         action="store_true",
         help=(
@@ -240,30 +246,35 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
 
-    # Physical constraints for specular/highlight enhancement
+    # Highlight-aware loss reweighting in latent/noise space
     parser.add_argument(
-        "--use_physical_constraints",
+        "--use_highlight_weighted_loss",
         action="store_true",
         default=False,
-        help="Whether to use physical constraints for specular/highlight enhancement during training."
+        help="Whether to upweight highlight regions in the standard diffusion loss."
     )
     parser.add_argument(
-        "--albedo_consistency_weight",
+        "--highlight_loss_weight",
         type=float,
-        default=0.1,
-        help="Weight for albedo consistency loss in physical constraints."
+        default=1.0,
+        help="Extra loss weight applied to highlight regions."
     )
     parser.add_argument(
-        "--specular_awareness_weight",
+        "--highlight_threshold",
         type=float,
-        default=0.05,
-        help="Weight for specular awareness loss in physical constraints."
+        default=0.8,
+        help="Luminance threshold used to detect highlights from the target image."
     )
     parser.add_argument(
-        "--roughness_weight",
+        "--highlight_gamma",
         type=float,
-        default=0.02,
-        help="Weight for roughness loss in physical constraints."
+        default=2.0,
+        help="Exponent used by soft highlight weighting. Larger values focus more on strong highlights."
+    )
+    parser.add_argument(
+        "--highlight_soft_weighting",
+        action="store_true",
+        help="Use a soft highlight score instead of a binary threshold mask."
     )
 
     parser.add_argument(

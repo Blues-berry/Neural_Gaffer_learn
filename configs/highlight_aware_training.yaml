@@ -1,13 +1,13 @@
-# Neural Gaffer Training Configuration with Physical Constraints for Specular/Highlight Enhancement
+# Neural Gaffer Training Configuration with Highlight-Weighted Diffusion Loss
 # 
-# This configuration enables physical-based constraints to improve specular handling
-# without increasing network complexity at inference time.
+# This configuration emphasizes highlight regions directly in latent/noise-space
+# diffusion training, without decoding latents back to image space.
 #
 # Usage:
 #   python neural_gaffer_training.py --config configs/highlight_aware_training.yaml
 #
 # Or override specific parameters:
-#   python neural_gaffer_training.py --use_physical_constraints --albedo_consistency_weight 0.15 --specular_awareness_weight 0.1
+#   python neural_gaffer_training.py --use_highlight_weighted_loss --highlight_loss_weight 2.0 --highlight_threshold 0.8
 
 # Base model
 pretrained_model_name_or_path: "kxic/zero123-xl"
@@ -51,21 +51,21 @@ checkpointing_steps: 5000
 # Seed
 seed: 42
 
-# ========== PHYSICAL CONSTRAINTS FOR SPECULAR/HIGHLIGHT ENHANCEMENT ==========
-# These constraints are ONLY active during training and do NOT affect inference!
-use_physical_constraints: true
+# ========== HIGHLIGHT-WEIGHTED DIFFUSION LOSS ==========
+# This reweights the standard diffusion loss in highlight regions.
+use_highlight_weighted_loss: true
 
-# Albedo consistency: Same object should have consistent intrinsic color under different lighting
-# Higher weight = stronger constraint on albedo consistency
-albedo_consistency_weight: 0.1
+# Extra weight added to highlight regions on top of the base loss.
+highlight_loss_weight: 2.0
 
-# Specular awareness: Ensure high-intensity regions (highlights) are handled correctly
-# Higher weight = more emphasis on correct specular prediction
-specular_awareness_weight: 0.08
+# Luminance threshold used to define highlights from the target image.
+highlight_threshold: 0.8
 
-# Roughness: Material roughness-aware loss
-# Helps model learn material-appropriate specular behavior
-roughness_weight: 0.03
+# Use a soft highlight score instead of a hard binary mask.
+highlight_soft_weighting: true
+
+# Larger gamma focuses more strongly on very bright regions.
+highlight_gamma: 2.0
 
 # Compute detailed metrics during validation
 compute_metrics: true

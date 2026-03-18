@@ -1,0 +1,25 @@
+pretrained_model_name_or_path = /4T/huggingface_cache/models--kxic--zero123-xl/snapshots/7d8aec2223b93e84eb26893d1e732e013523474b
+output_dir = logs/neural_gaffer_training_gpu1_highlight
+gradient_accumulation_steps = 1
+mixed_precision = fp16
+training_batch_size = 16
+dataloader_num_workers = 4
+num_validation_images = 1
+num_validation_batches = 2
+validation_steps = 1000
+initial_validation_step = -1
+use_ema = true
+report_to = wandb
+tracker_project_name = train_neural_gaffer_highlight_gpu1
+logging_steps = 50
+
+train_img_dir = /4T/CXY/Neural_Gaffer/training_data/images/training_img_data_subset
+train_lighting_dir = /4T/CXY/Neural_Gaffer/training_data/lighting/training_lighting_data_subset
+val_img_dir = /4T/CXY/Neural_Gaffer/validation_data/images/val_rendered_images_resized/validation
+val_lighting_dir = /4T/CXY/Neural_Gaffer/validation_data/lighting/val_preprocessed_environment_resized
+
+use_highlight_weighted_loss = true
+highlight_loss_weight = 2.0
+highlight_threshold = 0.8
+highlight_soft_weighting = true
+highlight_gamma = 2.0
