@@ -23,6 +23,8 @@ class NeuralGafferTrainingDataLoader():
                  lighting_dir_train, img_dir_train,  
                  lighting_dir_val, img_dir_val, 
                  batch_size, total_view=12, lighting_per_view=8, num_workers=4):
+        # 这个类只是一个轻量封装，负责根据训练 / 验证目录构建 dataloader。
+        # 真正决定“一个样本长什么样”的逻辑在下面的 NeuralGafferTrainingData 里。
         # super().__init__(self, img_dir, batch_size, total_view, num_workers)
         self.lighting_dir_train = lighting_dir_train
         self.img_dir_train = img_dir_train
@@ -42,6 +44,9 @@ class NeuralGafferTrainingDataLoader():
      
         
     def train_dataloader(self):
+        # 训练集:
+        # - 默认 relighting_only=True，表示条件图和目标图使用同一视角、不同光照
+        # - 这样模型重点学习“换光不换形”
         dataset = NeuralGafferTrainingData(lighting_dir=self.lighting_dir_train, 
                                         img_dir=self.img_dir_train,
                                         total_view=self.total_view, lighting_per_view=self.lighting_per_view,
@@ -53,6 +58,9 @@ class NeuralGafferTrainingDataLoader():
                              # sampler=sampler)
 
     def val_dataloader(self):
+        # 验证集:
+        # - lighting_per_view 固定为 4
+        # - 通常用于可控地比较同一物体在不同光照下的结果
         dataset = NeuralGafferTrainingData(lighting_dir=self.lighting_dir_val, 
                                 img_dir=self.img_dir_val,
                                 total_view=self.total_view, lighting_per_view=4,
@@ -76,9 +84,18 @@ class NeuralGafferTrainingData(Dataset):
                  image_preprocessed = False,
                  dataset_type=None
                  ) -> None:
-        """Create a dataset from a folder of images.
-        If you pass in a root directory it will be searched for images
-        ending in ext (ext can be a list)
+        """
+        Neural Gaffer 训练数据集。
+
+        这个类的职责是:
+        - 从一个物体目录中选出条件图、目标图、环境图和位姿
+        - 把它们处理成训练脚本需要的张量
+
+        关键概念:
+        - image_cond: 条件输入图
+        - image_target: 目标打光图
+        - envir_map_target_ldr / hdr: 目标环境图
+        - T: 条件相机到目标相机的相对位姿编码
         """
         self.img_dir = img_dir
         
@@ -95,6 +112,7 @@ class NeuralGafferTrainingData(Dataset):
         # if rank == 0:
         # total_objects = len(self.paths)
         if self.validation:
+            # 验证集根据 dataset_type 决定读取 seen / unseen 的对象列表。
             if self.dataset_type == 'training_object_with_unseen_envir':
                 # self.paths = self.paths[math.floor(total_objects / 100. * 99.):math.floor(total_objects / 100. * 99.5)]
                 self.path_file_name = 'val_seen_object_list.json'
@@ -106,6 +124,7 @@ class NeuralGafferTrainingData(Dataset):
             if torch.distributed.get_rank() == 0:
                 print(f'========== view of validation dataset ({self.dataset_type}): {len(self.paths)} ==========' )
         else:
+            # 训练集默认读 training_object_list.json。
             # training_object_with_seen_envir
             # self.paths = self.paths[:math.floor(total_objects / 100. * 99.5)]  # used first 99.5% as training
             self.path_file_name = 'training_object_list.json'
@@ -126,6 +145,8 @@ class NeuralGafferTrainingData(Dataset):
         return len(self.paths)
 
     def get_object_id(self):
+        # 先尝试读取显式的 object list json。
+        # 如果没有，就直接把目录下的子文件夹都当作 object_id。
         self.paths = []
         if os.path.exists(os.path.join(self.img_dir, self.path_file_name)):
             with open(os.path.join(self.img_dir, self.path_file_name)) as f:
@@ -137,6 +158,8 @@ class NeuralGafferTrainingData(Dataset):
 
 
     def cartesian_to_spherical(self, xyz):
+        # 把相机平移向量从笛卡尔坐标转成球坐标形式，
+        # 便于后续构造更稳定的相对位姿表示。
         xy = xyz[:, 0] ** 2 + xyz[:, 1] ** 2
         z = np.sqrt(xy + xyz[:, 2] ** 2)
         theta = np.arctan2(np.sqrt(xy), xyz[:, 2])  # for elevation angle defined from Z-axis down
@@ -145,6 +168,13 @@ class NeuralGafferTrainingData(Dataset):
         return np.array([theta, azimuth, z])
 
     def get_T(self, target_RT, cond_RT):
+        """
+        计算条件视角到目标视角的相对位姿编码。
+
+        返回:
+        - d_T: 训练时真正使用的相对位姿特征 [d_theta, sin(d_azimuth), cos(d_azimuth), d_z]
+        - cond_orientation / target_orientation: 额外保存的绝对朝向信息
+        """
         R, T = target_RT[:3, :3], target_RT[:, -1]
         T_target = -R.T @ T
 
@@ -169,6 +199,8 @@ class NeuralGafferTrainingData(Dataset):
         '''
         replace background pixel with random color in rendering
         '''
+        # 这里读取的是带 alpha 的渲染图。
+        # 如果提供 color，就把透明背景像素替换成指定颜色。
         try:
             img = plt.imread(path)
         except:
@@ -213,6 +245,20 @@ class NeuralGafferTrainingData(Dataset):
 
 
     def __getitem__(self, index):
+        """
+        返回一个训练样本。
+
+        最终 data 里最重要的字段有:
+        - image_target: 真实目标图
+        - image_cond: 条件输入图
+        - envir_map_target_ldr / hdr: 目标环境图
+        - T: 相对位姿
+
+        如果是训练模式，还会额外返回:
+        - image_another_target
+        - envir_map_another_target_ldr / hdr
+        这些通常用于额外的训练逻辑或拼 batch。
+        """
 
         data = {}
         total_view = self.total_view
@@ -220,12 +266,14 @@ class NeuralGafferTrainingData(Dataset):
         # index_target, index_cond = random.sample(range(total_view), 2)  # without replacement
         
         if self.validation:
+            # 验证时尽量固定采样方式，保证结果可重复对比。
             if self.relighting_only:
                 index_target, index_cond = 0, 0
             else:
                 index_target, index_cond = 0, 1
             lighting_idx_target, lighting_idx_cond = 0, 1
         else:
+            # 训练时随机采样视角和光照，增加多样性。
             if self.relighting_only:
                 # randonly sample a view 
                 sampled_view = random.sample(range(total_view), 1)[0]
@@ -235,6 +283,8 @@ class NeuralGafferTrainingData(Dataset):
             lighting_idx_cond, lighting_idx_target, lighting_idx_another_target = random.sample(range(total_lighting), 3)  # without replacement, return unique values
 
             # 10% chance to make lighting_idx_cond (lighting condition if the input condition image) to be -1
+            # lighting_idx_cond = -1 表示条件图使用“随机区域光”版本，
+            # 可以增加训练时的光照多样性。
             if random.random() < 0.1:
                 lighting_idx_cond = -1
 
@@ -247,25 +297,26 @@ class NeuralGafferTrainingData(Dataset):
         color = [1., 1., 1.]
 
         
-        # try:
-        # load condition image
+        # 1. 读取条件图。
         if lighting_idx_cond == -1:
             cond_image_path = os.path.join(filename, 'random_lighting_%03d.png' % (index_cond))
         else:
             cond_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (index_cond, lighting_idx_cond)))[0]
         cond_im = self.process_im(self.load_im(cond_image_path))                        
-        # load target image
+
+        # 2. 读取目标图，也就是模型应该学会生成的 GT。
         target_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (index_target, lighting_idx_target)))[0]
         target_im = self.process_im(self.load_im(target_image_path))
 
         
-        # target image has a name like 000_000_cannon_2k_225.png, the envir map name is cannon_2k_225
+        # 目标图文件名里已经包含环境图名字，因此可以反推出对应的环境图文件。
         target_envir_map_name = os.path.basename(target_image_path)[8:-4]
         target_img_file_name = os.path.basename(target_image_path)
         target_envir_map_ldr_path = os.path.join(self.preprocessed_lighting_dir, 'LDR', object_id, target_img_file_name)
         target_envir_map_hdr_normalized_path = os.path.join(self.preprocessed_lighting_dir, 'HDR_rescaled', object_id, target_img_file_name)
 
-        # load another target image if needed
+        # 训练时额外再采样一个“同视角、另一种光照”的目标图。
+        # 这会让训练 batch 里包含更多不同光照的监督信息。
         if not self.validation:
             another_target_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (index_target, lighting_idx_another_target)))[0]
             another_target_im = self.process_im(self.load_im(another_target_image_path))
@@ -278,7 +329,8 @@ class NeuralGafferTrainingData(Dataset):
 
         cond_RT = np.load(cond_RT_path)
         target_RT = np.load(target_RT_path) # w2c
-        
+
+        # 3. 读取与目标图对应的环境图。
         envir_map_target_ldr = self.process_im(self.load_im(target_envir_map_ldr_path))
         envir_map_target_hdr = self.process_im(self.load_im(target_envir_map_hdr_normalized_path))
         if not self.validation:
@@ -333,6 +385,8 @@ class NeuralGafferTrainingData(Dataset):
             
             
             
+        # 4. 组装最终返回的数据字典。
+        # 训练脚本会直接按这些 key 从 batch 中取数据。
         data["image_target"] = target_im
         data["image_cond"] = cond_im
         data["envir_map_target_ldr"] = envir_map_target_ldr
@@ -350,6 +404,8 @@ class NeuralGafferTrainingData(Dataset):
         return data
 
     def process_im(self, im):
+        # 统一把 PIL 图像变成训练使用的张量:
+        # RGB -> Tensor -> Normalize 到 [-1, 1]
         im = im.convert("RGB")
         return self.tform(im)
 

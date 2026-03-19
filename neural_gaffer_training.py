@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import re
 import shutil
 from pathlib import Path
 import numpy as np
@@ -63,6 +64,8 @@ logger = get_logger(__name__)
 
 
 def image_grid(imgs, rows, cols):
+    # 把多张 PIL 图像按 rows x cols 的方式拼成一张大图。
+    # 这个函数主要用于可视化或模型卡展示，不参与训练。
     assert len(imgs) == rows * cols
 
     w, h = imgs[0].size
@@ -74,6 +77,23 @@ def image_grid(imgs, rows, cols):
 
 
 def compute_specular_metrics(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.8) -> dict:
+    """
+    计算与高光相关的简单验证指标。
+
+    参数说明:
+    - pred: 模型预测图像，形状通常为 [B, 3, H, W]，取值范围假定为 [-1, 1]
+    - target: 真实图像，形状同上，取值范围假定为 [-1, 1]
+    - threshold: 亮度阈值，亮度高于该值的像素会被视为“高光区域”
+
+    返回值:
+    - dict，包含若干标量指标，目前包括:
+      - highlight_iou: 预测高光区域与真实高光区域的 IoU
+      - highlight_intensity_error: 两者高光区域平均亮度的差值
+
+    设计目的:
+    - 这不是训练 loss，而是一个轻量级验证指标，帮助判断模型是否学到了
+      “哪里应该亮、亮到什么程度”。
+    """
     pred = (pred + 1) / 2
     target = (target + 1) / 2
 
@@ -98,6 +118,21 @@ def compute_specular_metrics(pred: torch.Tensor, target: torch.Tensor, threshold
     return metrics
 
 def log_validation(validation_dataloader, vae, image_encoder, feature_extractor, unet, args, accelerator, weight_dtype, split="val", cur_step=0):
+    """
+    跑一轮验证，并把结果可视化后记录到 wandb。
+
+    主要流程:
+    1. 用当前训练中的 VAE / image_encoder / UNet 组装出推理 pipeline
+    2. 在验证集上生成 relighting 结果
+    3. 计算 LPIPS / SSIM / PSNR 以及高光相关指标
+    4. 把输入图、GT、预测图、高光 mask / 权重图等拼接后上传
+
+    关键参数说明:
+    - validation_dataloader: 验证数据加载器，每个 batch 是一个 dict
+    - weight_dtype: 推理和验证时使用的数据类型，例如 fp16
+    - split: 当前验证集名称，用于日志前缀
+    - cur_step: 当前训练步数，用于 wandb step 对齐
+    """
     logger.info("Running {} validation... ".format(split))
 
     scheduler = DDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -127,11 +162,23 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
     predicted_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
     gt_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
+    highlight_metric_sums = {
+        "highlight_region_ratio": 0.0,
+        "highlight_mse": 0.0,
+        "non_highlight_mse": 0.0,
+        "highlight_mse_ratio": 0.0,
+    }
+    highlight_metric_batches = 0
     
     
     for valid_step, batch in tqdm(enumerate(validation_dataloader)):
         if args.num_validation_batches is not None and valid_step >= args.num_validation_batches:
             break
+        # batch 中几个关键变量:
+        # - image_target: 真实目标打光图
+        # - image_cond: 条件输入图（原始物体图）
+        # - envir_map_target_ldr / hdr: 目标环境光
+        # - T: 相机位姿变化
         gt_image = batch["image_target"].to(dtype=weight_dtype)
         input_image = batch["image_cond"].to(dtype=weight_dtype)
         target_envmap_ldr = batch["envir_map_target_ldr"].to(dtype=weight_dtype)
@@ -139,11 +186,69 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         pose = batch["T"].to(dtype=weight_dtype)
         # target_orientation = batch["target_orientation"].to(dtype=weight_dtype)
         # pose = torch.cat([pose, target_orientation], dim=-1)
+
+        with torch.no_grad():
+            gt_latents = vae.encode(gt_image).latent_dist.sample().detach()
+            gt_latents = gt_latents * vae.config.scaling_factor
+
+            img_latents = vae.encode(input_image).latent_dist.mode().detach()
+            target_envmap_ldr_latents = vae.encode(target_envmap_ldr).latent_dist.sample().detach()
+            target_envmap_hdr_latents = vae.encode(target_envmap_hdr).latent_dist.mode().detach()
+
+            noise = torch.randn_like(gt_latents)
+            timesteps = torch.randint(
+                0,
+                scheduler.config.num_train_timesteps,
+                (gt_latents.shape[0],),
+                device=gt_latents.device,
+            ).long()
+            noisy_latents = scheduler.add_noise(
+                gt_latents.to(dtype=torch.float32),
+                noise.to(dtype=torch.float32),
+                timesteps,
+            ).to(dtype=img_latents.dtype)
+            prompt_embeds = _encode_image_without_pose(
+                image_encoder,
+                input_image,
+                gt_latents.device,
+                weight_dtype,
+                False,
+            )
+            latent_model_input = torch.cat(
+                [noisy_latents, img_latents, target_envmap_hdr_latents, target_envmap_ldr_latents],
+                dim=1,
+            )
+            model_pred = unet(
+                latent_model_input,
+                timesteps,
+                encoder_hidden_states=prompt_embeds,
+            ).sample
+
+            if scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif scheduler.config.prediction_type == "v_prediction":
+                target = scheduler.get_velocity(gt_latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {scheduler.config.prediction_type}")
+
+            per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+            highlight_mask = compute_highlight_mask(
+                gt_image=gt_image,
+                latent_hw=per_pixel_loss.shape[-2:],
+                threshold=getattr(args, "highlight_threshold", 0.8),
+            ).to(device=per_pixel_loss.device, dtype=per_pixel_loss.dtype)
+            batch_highlight_metrics = summarize_highlight_loss_metrics(per_pixel_loss, highlight_mask)
+            for key, value in batch_highlight_metrics.items():
+                highlight_metric_sums[key] += value.item()
+            highlight_metric_batches += 1
+
         cur_predicted_images = []
         batchsize, _, h, w = input_image.shape
         for _ in range(args.num_validation_images):
             with torch.autocast("cuda"):
-                # todo: change the name of "first_target_envir_map" to "target_envmap_hdr"
+                # 这里调用的是自定义的 Neural Gaffer pipeline。
+                # first_target_envir_map / second_target_envir_map 是原仓库里的旧命名，
+                # 实际上分别对应 HDR 和 LDR 的目标环境图。
                 pipeline_output_images = pipeline(input_imgs=input_image, prompt_imgs=input_image, poses=pose, 
                                         first_target_envir_map=target_envmap_hdr , second_target_envir_map=target_envmap_ldr, 
                                         height=h, width=w,
@@ -152,7 +257,8 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
             cur_predicted_images.append(pipeline_output_images) # PIL image list [num_validation_images, batch_size]
         
-        # [-1, 1][batch_size, 3, h, w] -> [0, 1][batch_size, h, w, 3]
+        # 把张量从训练常用的 [-1, 1] 区间转成可视化更方便的 [0, 1]，
+        # 同时把维度从 [B, C, H, W] 变成 [B, H, W, C]。
         envir_map_target_hdr_npy = 0.5 * (np.array(target_envmap_hdr.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
         envir_map_target_ldr_npy = 0.5 * (np.array(target_envmap_ldr.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
         gt_image_npy = 0.5 * (np.array(gt_image.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
@@ -174,8 +280,9 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         predicted_images.append(prediction_image_sample0)
         gt_images.append(gt_image_npy)
         
-        # concatenate the images to a single image
-        ## [batch_size, h, w, 3] -> [batch_size * h, w, 3]
+        # 为了便于在 wandb 一眼看懂结果，这里把一个 batch 内的图片沿竖直方向拼起来，
+        # 再把不同类型的图（输入 / GT / 预测 / 高光图 / 环境图）沿水平方向拼接。
+        # 最终得到一张宽图，上传后可以快速对比。
 
         input_image_npy_new = input_image_npy.reshape((1,-1, w, 3)).squeeze()
         gt_image_npy_new = gt_image_npy.reshape((1,-1, w, 3)).squeeze().squeeze()
@@ -199,7 +306,9 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
             axis=1,
         )
 
-        # save the concatenated image
+        # result: 大拼图，便于整体观察
+        # highlight_mask: 二值高光区域
+        # highlight_weight: 真正参与 loss 加权的权重图（已归一化到 [0, 1] 便于显示）
         concatenated_image = Image.fromarray((concatenated_image * 255).astype(np.uint8))
         image_logs.append(
             {
@@ -236,8 +345,16 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     
     logs = {"lpips_loss/{}".format(split): mean_lpips_loss, "ssim_loss/{}".format(split): mean_ssim_loss, "PSNR/{}".format(split): mean_psnr}
     val_metrics.update(logs)
+
+    if highlight_metric_batches > 0:
+        highlight_logs = {
+            f"{metric_name}/{split}": metric_sum / highlight_metric_batches
+            for metric_name, metric_sum in highlight_metric_sums.items()
+        }
+        logs.update(highlight_logs)
+        val_metrics.update(highlight_logs)
     
-    # Compute specular/highlight metrics if compute_metrics is enabled
+    # 如果用户打开了 compute_metrics，就在验证阶段额外统计高光相关指标。
     if getattr(args, 'compute_metrics', False):
         try:
             # Compute metrics on a subset to save time
@@ -252,7 +369,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         except Exception:
             pass
     
-    # after validation, set the pipeline back to training mode
+    # 验证结束后，把模型切回 train 模式，避免影响后续训练。
     unet.train()
     vae.train()
     image_encoder.train()
@@ -263,6 +380,10 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
             formatted_images = []
 
             for log_id, log in enumerate(image_logs):
+                # 这里会把三类图分别打到 wandb:
+                # 1. 整体拼图
+                # 2. 高光 mask
+                # 3. 高光权重图
                 formatted_images.append(wandb.Image(log["result"], caption="{}_result".format(log_id)))
                 formatted_images.append(wandb.Image(log["highlight_mask"], caption="{}_highlight_mask".format(log_id)))
                 formatted_images.append(wandb.Image(log["highlight_weight"], caption="{}_highlight_weight".format(log_id)))
@@ -334,8 +455,24 @@ def compute_highlight_weight_map(
     gamma: float = 2.0,
 ):
     """
-    Build a spatial weight map from the target image and downsample it to the
-    latent/noise resolution used by the diffusion loss.
+    根据真实目标图像生成“高光区域权重图”，并缩放到 latent / noise loss 的分辨率。
+
+    参数说明:
+    - gt_image: 真实图像，形状 [B, 3, H, W]，取值范围为 [-1, 1]
+    - latent_hw: 目标分辨率，即 loss 张量的空间尺寸 (H_latent, W_latent)
+    - threshold: 亮度阈值；越高表示越只关注最亮的区域
+    - extra_weight: 高光区域相对于普通区域的额外权重
+    - soft_weighting: 是否使用“软权重”而不是二值 mask
+    - gamma: 软权重模式下的指数，越大表示越强调非常亮的像素
+
+    返回值:
+    - weight_map，形状 [B, 1, H_latent, W_latent]
+      普通区域权重约为 1，高光区域权重 > 1
+
+    为什么要这么做:
+    - diffusion 训练的核心目标仍然是预测噪声 / velocity
+    - 我们不再把 latent 强行 decode 成图像做“伪物理约束”
+    - 而是直接在原始 loss 上，对高光区域提高权重，保持训练目标正确
     """
     gt_img_01 = (gt_image.float() + 1.0) / 2.0
     luminance = (
@@ -358,14 +495,74 @@ def compute_highlight_weight_map(
     return 1.0 + extra_weight * highlight_score
 
 
-def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tuple[int, int]):
+def compute_highlight_mask(
+    gt_image: torch.Tensor,
+    latent_hw: tuple[int, int],
+    threshold: float = 0.8,
+):
+    """
+    生成与 latent loss 分辨率对齐的二值高光区域 mask。
+    """
     gt_img_01 = (gt_image.float() + 1.0) / 2.0
     luminance = (
         0.299 * gt_img_01[:, 0:1]
         + 0.587 * gt_img_01[:, 1:2]
         + 0.114 * gt_img_01[:, 2:3]
     )
-    mask = (luminance > getattr(args, "highlight_threshold", 0.8)).float()
+    highlight_mask = (luminance > threshold).float()
+    if highlight_mask.shape[-2:] != latent_hw:
+        highlight_mask = F.interpolate(highlight_mask, size=latent_hw, mode="nearest")
+    return highlight_mask
+
+
+def summarize_highlight_loss_metrics(
+    per_pixel_loss: torch.Tensor,
+    highlight_mask: torch.Tensor,
+):
+    """
+    统计高光区域与非高光区域的 loss 表现。
+
+    这里会先把 channel 维做平均，使 loss 语义更接近“每个 latent 像素的 MSE”。
+    """
+    spatial_loss = per_pixel_loss.mean(dim=1, keepdim=True).float()
+    highlight_mask = highlight_mask.float()
+    non_highlight_mask = 1.0 - highlight_mask
+
+    highlight_sum = highlight_mask.sum()
+    non_highlight_sum = non_highlight_mask.sum()
+
+    highlight_mse = (spatial_loss * highlight_mask).sum() / highlight_sum.clamp_min(1e-8)
+    non_highlight_mse = (spatial_loss * non_highlight_mask).sum() / non_highlight_sum.clamp_min(1e-8)
+    highlight_mse_ratio = highlight_mse / non_highlight_mse.clamp_min(1e-8)
+
+    return {
+        "highlight_region_ratio": highlight_mask.mean(),
+        "highlight_mse": highlight_mse,
+        "non_highlight_mse": non_highlight_mse,
+        "highlight_mse_ratio": highlight_mse_ratio,
+    }
+
+
+def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tuple[int, int]):
+    """
+    构造验证阶段要显示的两张图:
+    - highlight_mask: 二值高光 mask
+    - highlight_weight: 归一化后的高光权重图
+
+    这两个可视化不会参与训练，只是为了让人更直观地确认:
+    “模型当前重点关注的区域，是否真的是我们想强调的高光部分。”
+    """
+    gt_img_01 = (gt_image.float() + 1.0) / 2.0
+    luminance = (
+        0.299 * gt_img_01[:, 0:1]
+        + 0.587 * gt_img_01[:, 1:2]
+        + 0.114 * gt_img_01[:, 2:3]
+    )
+    mask = compute_highlight_mask(
+        gt_image=gt_image,
+        latent_hw=luminance.shape[-2:],
+        threshold=getattr(args, "highlight_threshold", 0.8),
+    )
     weight_map = compute_highlight_weight_map(
         gt_image=gt_image,
         latent_hw=luminance.shape[-2:],
@@ -387,6 +584,27 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
     mask_npy = np.array(mask_rgb.permute([0, 2, 3, 1]).cpu(), dtype=np.float32)
     weight_npy = np.array(weight_rgb.permute([0, 2, 3, 1]).cpu(), dtype=np.float32)
     return mask_npy, weight_npy
+
+
+def resolve_wandb_project_name(args) -> str:
+    """
+    优先沿用本地最近一次 wandb run 的项目名，找不到时回退到配置值。
+    """
+    fallback_project = getattr(args, "tracker_project_name", "train_neural_gaffer_private")
+    workspace_root = Path(__file__).resolve().parent.parent
+    debug_log_path = workspace_root / "wandb" / "latest-run" / "logs" / "debug.log"
+
+    try:
+        if debug_log_path.exists():
+            lines = debug_log_path.read_text(errors="ignore").splitlines()
+            for line in reversed(lines):
+                match = re.search(r"finishing run [^/]+/([^/]+)/[^/\s]+", line)
+                if match:
+                    return match.group(1)
+    except Exception as exc:
+        logger.warning("Failed to infer the last wandb project from %s: %s", debug_log_path, exc)
+
+    return fallback_project
 
 def _encode_image(image_encoder, image, device, dtype, do_classifier_free_guidance):
 
@@ -549,6 +767,8 @@ def main(args):
     )
 
 
+    # 这里决定训练时是否启用“高光区域重加权”的 diffusion loss。
+    # 这是本次改动的核心开关。
     use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
     if use_highlight_weighted_loss:
         logger.info(
@@ -762,9 +982,12 @@ def main(args):
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
+        tracker_project_name = resolve_wandb_project_name(args)
+        tracker_config["tracker_project_name"] = tracker_project_name
          # specified the run name
         output_basename = os.path.basename(args.output_dir)
-        accelerator.init_trackers(args.tracker_project_name, config=tracker_config, init_kwargs={"wandb": {"name": f'{output_basename}'}})
+        logger.info("Using wandb project: %s", tracker_project_name)
+        accelerator.init_trackers(tracker_project_name, config=tracker_config, init_kwargs={"wandb": {"name": f'{output_basename}'}})
 
     # Train!
     total_batch_size = args.training_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -910,8 +1133,23 @@ def main(args):
                     target = noise_scheduler.get_velocity(gt_latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                # per_pixel_loss:
+                # - 这是标准 diffusion 训练里最核心的逐像素 MSE
+                # - 形状与 model_pred / target 相同
+                # - 之所以先不立刻 mean，是因为后面要在空间维度上做加权
                 per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                highlight_mask = compute_highlight_mask(
+                    gt_image=gt_image,
+                    latent_hw=per_pixel_loss.shape[-2:],
+                    threshold=getattr(args, "highlight_threshold", 0.8),
+                ).to(device=per_pixel_loss.device, dtype=per_pixel_loss.dtype)
+                highlight_metric_tensors = summarize_highlight_loss_metrics(per_pixel_loss, highlight_mask)
+                logging_steps = max(1, getattr(args, "logging_steps", 50))
+                should_log_highlight_metrics = global_step % logging_steps == 0
+
                 if use_highlight_weighted_loss:
+                    # 根据真实目标图生成一个与 latent 分辨率一致的空间权重图。
+                    # 这样模型在学习噪声时，会对高光区域承担更大的误差惩罚。
                     weight_map = compute_highlight_weight_map(
                         gt_image=gt_image,
                         latent_hw=per_pixel_loss.shape[-2:],
@@ -920,22 +1158,33 @@ def main(args):
                         soft_weighting=getattr(args, "highlight_soft_weighting", False),
                         gamma=getattr(args, "highlight_gamma", 2.0),
                     ).to(device=per_pixel_loss.device, dtype=per_pixel_loss.dtype)
+                    # weighted_loss: 每个位置的 loss 乘以空间权重
                     weighted_loss = per_pixel_loss * weight_map
+                    # norm: 用于归一化，避免“权重越大，总 loss 就机械变大太多”
+                    # per_pixel_loss.shape[1] 对应通道数 C
                     norm = weight_map.sum() * per_pixel_loss.shape[1]
                     loss = weighted_loss.sum() / norm.clamp_min(1e-6)
-
-                    logging_steps = max(1, getattr(args, "logging_steps", 50))
-                    if accelerator.is_main_process and global_step % logging_steps == 0:
-                        accelerator.log(
-                            {
-                                "highlight_weight/mean": weight_map.mean().item(),
-                                "highlight_weight/max": weight_map.max().item(),
-                                "highlight_weight/highlight_fraction": (weight_map > 1.0).float().mean().item(),
-                            },
-                            step=global_step,
-                        )
                 else:
                     loss = per_pixel_loss.mean()
+
+                if should_log_highlight_metrics:
+                    reduced_highlight_metrics = {
+                        key: accelerator.reduce(value.detach(), reduction="mean").item()
+                        for key, value in highlight_metric_tensors.items()
+                    }
+                    highlight_logs = reduced_highlight_metrics
+                    if use_highlight_weighted_loss:
+                        highlight_logs = {
+                            **highlight_logs,
+                            "highlight_weight/mean": accelerator.reduce(weight_map.mean().detach(), reduction="mean").item(),
+                            "highlight_weight/max": accelerator.reduce(weight_map.max().detach(), reduction="mean").item(),
+                            "highlight_weight/highlight_fraction": accelerator.reduce(
+                                (weight_map > 1.0).float().mean().detach(),
+                                reduction="mean",
+                            ).item(),
+                        }
+                    if accelerator.is_main_process:
+                        accelerator.log(highlight_logs, step=global_step)
 
                 accelerator.backward(loss)
 

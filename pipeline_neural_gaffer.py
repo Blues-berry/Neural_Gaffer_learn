@@ -69,6 +69,17 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for single view conditioned novel view generation using Zero1to3.
 
+    中文理解:
+    - 这是项目里最核心的“推理管线”
+    - 它接收条件图像、目标环境光，以及可选的位姿信息
+    - 最终输出在目标光照条件下的 relighting 图像
+
+    需要特别记住的一点:
+    - 这里的 UNet 输入不是单纯的噪声 latent
+    - 而是 `噪声 latent + 输入图 latent + HDR 环境图 latent + LDR 环境图 latent`
+    - 再配合 CLIP 图像 embedding 作为 `encoder_hidden_states`
+    - 所以它本质上是在“多条件扩散生成”
+
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
@@ -298,6 +309,11 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         r"""
         Encodes the prompt into text encoder hidden states.
 
+        中文说明:
+        - 这是标准 diffusers pipeline 里常见的文本编码函数
+        - 在 Neural Gaffer 里，主要条件其实不是文字，而是图像
+        - 这个函数更多是为了保留兼容结构，当前主流程并不依赖文字 prompt
+
         Args:
              prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
@@ -424,6 +440,8 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         return prompt_embeds
 
     def CLIP_preprocess(self, x):
+        # 按 OpenAI CLIP 的标准方式预处理图像。
+        # 输入要求是 [-1, 1]，输出会变成适合 CLIP image encoder 的归一化张量。
         dtype = x.dtype
         # following openai's implementation
         # TODO HF OpenAI CLIP preprocessing issue https://github.com/huggingface/transformers/issues/22505#issuecomment-1650170741
@@ -440,6 +458,12 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
 
     # from image_variation
     def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
+        """
+        把输入图像编码成 CLIP embedding。
+
+        这里产出的不是 VAE latent，而是高层语义特征。
+        它会在后面的 UNet 前向中作为 `encoder_hidden_states` 使用。
+        """
         dtype = next(self.image_encoder.parameters()).dtype
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -497,6 +521,14 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         return image_embeddings
 
     def _encode_pose(self, pose, device, num_images_per_prompt, do_classifier_free_guidance):
+        """
+        把位姿编码成一个低维向量。
+
+        编码方式:
+        - elevation: 直接转弧度
+        - azimuth: 用 sin / cos 展开，避免角度周期性带来的不连续
+        - z: 直接保留
+        """
         dtype = next(self.cc_projection.parameters()).dtype
         if isinstance(pose, torch.Tensor):
             pose_embeddings = pose.unsqueeze(1).to(device=device, dtype=dtype)
@@ -524,6 +556,8 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         return pose_embeddings
 
     def _encode_image_without_pose(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
+        # 当前项目最常见的条件形式:
+        # 只使用图像 embedding，不显式拼接 pose embedding。
         img_prompt_embeds = self._encode_image(image, device, num_images_per_prompt, False)
         prompt_embeds = img_prompt_embeds
         # follow 0123, add negative prompt, after projection
@@ -543,6 +577,8 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         return image, has_nsfw_concept
 
     def decode_latents(self, latents):
+        # 把扩散空间里的 latent 解码回普通图像。
+        # 返回值是 [B, H, W, C] 的 numpy，范围在 [0, 1]。
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -590,6 +626,8 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
             )
 
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        # 生成扩散过程起点的随机噪声 latent。
+        # 如果外部已经给了 latents，就直接复用；否则随机采样。
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -607,6 +645,16 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         return latents
 
     def prepare_img_latents(self, image, batch_size, dtype, device, generator=None, do_classifier_free_guidance=False):
+        """
+        把输入图像编码成 VAE latent。
+
+        在本项目里，这个函数会被复用来处理:
+        - 输入条件图 `input_imgs`
+        - HDR 目标环境图 `first_target_envir_map`
+        - LDR 目标环境图 `second_target_envir_map`
+
+        所以后续 UNet 看到的“条件图像信息”，大部分都来自这里。
+        """
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -701,6 +749,13 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         r"""
         Function invoked when calling the pipeline for generation.
 
+        中文总览:
+        1. 先把条件图像编码成 CLIP embedding，作为高层语义条件
+        2. 再把输入图像 / HDR 环境图 / LDR 环境图编码成 VAE latent
+        3. 从随机噪声 latent 开始做 denoising
+        4. 每一步都把“噪声 + 多种条件 latent”一起送入 UNet
+        5. 最后把得到的 latent 解码回图像
+
         Args:
             input_imgs (`PIL` or `List[PIL]`, *optional*):
                 The single input image for each 3D object
@@ -789,14 +844,15 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input image with pose as prompt
+        # 3. 把条件图像编码成 CLIP embedding。
+        # 这一步得到的是 `prompt_embeds`，会在 UNet 中作为 cross-attention 条件使用。
         prompt_embeds = self._encode_image_without_pose(prompt_imgs, device, num_images_per_prompt, do_classifier_free_guidance)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Prepare latent variables
+        # 5. 初始化扩散过程的噪声 latent，也就是生成起点。
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             4,
@@ -808,7 +864,10 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
             latents,
         )
 
-        # 6. Prepare image latents
+        # 6. 把三类图像条件都编码成 latent:
+        # - img_latents: 输入物体图
+        # - first_target_envir_map_latents: HDR 目标环境图
+        # - second_target_envir_map_latents: LDR 目标环境图
         img_latents = self.prepare_img_latents(input_imgs,
                                                batch_size * num_images_per_prompt,
                                                prompt_embeds.dtype,
@@ -836,26 +895,29 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Denoising loop
+        # 7. 扩散去噪主循环。
+        # 每一步都根据当前噪声状态 + 条件信息，让 UNet 预测“应该去掉多少噪声”。
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                # import ipdb; ipdb.set_trace()
+                # 这是 Neural Gaffer 最关键的一步:
+                # 把“当前噪声 latent”和“多种条件 latent”在通道维直接拼接，
+                # 形成 UNet 的最终输入。
                 latent_model_input = torch.cat([latent_model_input, img_latents, first_target_envir_map_latents, second_target_envir_map_latents], dim=1)
 
-                # predict the noise residual
+                # UNet 预测当前时刻的噪声残差。
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
 
-                # perform guidance
+                # classifier-free guidance:
+                # 用“有条件预测”和“无条件预测”的差异来增强条件约束。
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                # latents = self.scheduler.step(noise_pred.to(dtype=torch.float32), t, latents.to(dtype=torch.float32)).prev_sample.to(prompt_embeds.dtype)
+                # 根据 scheduler，把 x_t 更新到 x_{t-1}。
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided

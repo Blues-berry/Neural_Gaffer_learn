@@ -31,6 +31,15 @@ from parse_args import parse_args
 
 
 def log_validation(validation_dataloader, vae, image_encoder, feature_extractor, unet, args, accelerator, weight_dtype, img_per_object=600, split="val"):
+    """
+    对真实图片做 relighting 推理，并把结果保存到磁盘。
+
+    尽管函数名叫 log_validation，这里做的事情本质上是“批量推理”而不是训练中的验证。
+    主要流程:
+    1. 组装 pipeline
+    2. 遍历 dataloader，逐批生成预测图
+    3. 把输入图 / 环境图 / 预测图按目录结构保存
+    """
     logger.info("Running {} validation... ".format(split))
 
     scheduler = DDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -63,6 +72,10 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     for valid_step, batch in tqdm(enumerate(validation_dataloader)):
         if args.num_validation_batches is not None and valid_step >= args.num_validation_batches:
             break
+        # 真实图推理时没有 GT，因此 batch 里主要是:
+        # - image_cond: 输入图
+        # - envir_map_target_ldr / hdr: 目标环境光
+        # - cond_img_name / target_view_idx / target_envir_map_name: 用于保存文件名
         input_image = batch["image_cond"].to(dtype=weight_dtype)
 
         target_envmap_ldr = batch["envir_map_target_ldr"].to(dtype=weight_dtype)
@@ -81,7 +94,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         generartor_list = [torch.Generator(device=accelerator.device).manual_seed(args.seed) for _ in range(batchsize)]
         for _ in range(args.num_validation_images): # sampled times
             with torch.autocast("cuda"):
-                # todo: change the name of "cond_envir_map" to "target_envmap_hdr"
+                # 真实图推理不传 pose，直接用条件图 + 目标环境图进行 relighting。
                 pipeline_output_images = pipeline(input_imgs=input_image, prompt_imgs=input_image, 
                                 first_target_envir_map=target_envmap_hdr, second_target_envir_map=target_envmap_ldr, poses=None, 
                                 height=h, width=w,
@@ -113,7 +126,8 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     input_images = np.concatenate(input_images, axis=0) # [num_validation_batches * batch_size, h, w, 3]
     
     
-    # save results
+    # 保存结果时按“输入图名字 / 图片类型 / 光照名字_视角编号”的结构落盘，
+    # 方便后处理、做视频或者复查单个样本。
     save_dir = os.path.join(args.save_dir)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -143,6 +157,14 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
 
 def main(args):
+    """
+    真实图片推理入口。
+
+    这里不会训练模型，只会:
+    - 加载 checkpoint
+    - 构建真实图数据集
+    - 调用 log_validation 批量保存结果
+    """
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -168,7 +190,9 @@ def main(args):
 
     vae.requires_grad_(False)
     image_encoder.requires_grad_(False)
-    # zero init unet conv_in from 8 channels to 16 channels
+    # 这里把原始 UNet 的输入通道从 8 改到 16。
+    # 原因是本项目的 UNet 输入不是“噪声 + 一张条件图”这么简单，
+    # 而是要额外拼接 HDR / LDR 目标环境图 latent，因此通道数翻倍。
     conv_in_16 = torch.nn.Conv2d(16, unet.conv_in.out_channels, kernel_size=unet.conv_in.kernel_size, padding=unet.conv_in.padding)
     conv_in_16.requires_grad_(False)
     unet.conv_in.requires_grad_(False)
@@ -186,7 +210,8 @@ def main(args):
         )
 
 
-    # Init Dataset
+    # 构建真实图片推理数据集。
+    # 这里的数据已经是预处理后的真实图和目标环境图。
     image_transforms = torchvision.transforms.Compose(
         [
             torchvision.transforms.Resize((args.resolution, args.resolution), antialias=True),  # 256, 256

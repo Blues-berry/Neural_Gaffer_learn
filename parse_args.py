@@ -133,6 +133,8 @@ def parse_args(input_args=None):
         "--logging_steps",
         type=int,
         default=50,
+        # 训练时每隔多少步记录一次 loss / 权重统计到 wandb。
+        # 数值越小，日志越密；但也会带来更高的记录开销。
         help="Log training metrics every N optimization steps.",
     )
     parser.add_argument(
@@ -246,34 +248,49 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
 
-    # Highlight-aware loss reweighting in latent/noise space
+    # =======================
+    # 高光区域重加权 loss 参数
+    # =======================
+    # 这一组参数控制的是:
+    # “在标准 diffusion loss 上，对高光区域额外加权”
+    # 而不是旧版的 physical constraints。
     parser.add_argument(
         "--use_highlight_weighted_loss",
         action="store_true",
         default=False,
+        # 主开关:
+        # - True: 启用高光区域加权
+        # - False: 使用普通的全图均匀 MSE
         help="Whether to upweight highlight regions in the standard diffusion loss."
     )
     parser.add_argument(
         "--highlight_loss_weight",
         type=float,
         default=1.0,
+        # 高光区域的额外权重。
+        # 最终普通区域约为 1，高光区域约为 1 + highlight_loss_weight * score
         help="Extra loss weight applied to highlight regions."
     )
     parser.add_argument(
         "--highlight_threshold",
         type=float,
         default=0.8,
+        # 亮度阈值。
+        # 越高表示只把最亮的部分视为高光。
         help="Luminance threshold used to detect highlights from the target image."
     )
     parser.add_argument(
         "--highlight_gamma",
         type=float,
         default=2.0,
+        # 软权重模式下的指数参数。
+        # gamma 越大，真正非常亮的区域会被强调得更明显。
         help="Exponent used by soft highlight weighting. Larger values focus more on strong highlights."
     )
     parser.add_argument(
         "--highlight_soft_weighting",
         action="store_true",
+        # 是否使用平滑的连续权重，而不是简单的 0/1 二值 mask。
         help="Use a soft highlight score instead of a binary threshold mask."
     )
 
@@ -351,8 +368,8 @@ def parse_args(input_args=None):
         type=str,
         default="train_neural_gaffer_private",
         help=(
-            "The `project_name` argument passed to Accelerator.init_trackers for"
-            " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
+            "Fallback wandb project name. Training will first try to reuse the most recent local wandb project,"
+            " and only fall back to this value if no previous project can be inferred."
         ),
     )
 

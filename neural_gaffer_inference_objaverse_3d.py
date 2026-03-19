@@ -33,6 +33,12 @@ from parse_args import parse_args
 
 
 def log_validation(validation_dataloader, vae, image_encoder, feature_extractor, unet, args, accelerator, weight_dtype, split="val"):
+    """
+    对 3D/Objaverse 风格数据做批量 relighting 推理。
+
+    与真实图推理相比，这里可能带有 GT，因此除了保存结果外，
+    还可以额外计算 PSNR / LPIPS / SSIM。
+    """
     logger.info("Running {} validation... ".format(split))
 
     scheduler = DDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -64,6 +70,12 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     for valid_step, batch in tqdm(enumerate(validation_dataloader)):
         if args.num_validation_batches is not None and valid_step >= args.num_validation_batches:
             break
+        # Objaverse 3D 推理时，batch 里通常同时包含:
+        # - 条件图 image_cond
+        # - 目标图 image_target（如果可用）
+        # - 目标环境图 envir_map_target_ldr / hdr
+        # - 位姿 T
+        # - 文件名与 target_RT，用于保存
         input_image = batch["image_cond"].to(dtype=weight_dtype)
         gt_image = batch["image_target"].to(dtype=weight_dtype) if "image_target" in batch else None
         if "image_target" in batch:
@@ -86,7 +98,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         generartor_list = [torch.Generator(device=accelerator.device).manual_seed(args.seed) for _ in range(batchsize)]
         for _ in range(args.num_validation_images): # sampled times
             with torch.autocast("cuda"):
-                # todo: change the name of "cond_envir_map" to "target_envmap_hdr"
+                # 这里和训练时保持一致: 输入图 + 目标环境图 + pose 一起作为条件。
                 pipeline_output_images = pipeline(input_imgs=input_image, prompt_imgs=input_image, 
                                 first_target_envir_map=target_envmap_hdr, second_target_envir_map=target_envmap_ldr, poses=pose, 
                                 height=h, width=w,
@@ -123,6 +135,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     target_RT_list = np.concatenate(target_RT_list, axis=0) # [num_validation_batches * batch_size, 4, 4]
 
     if args.compute_metrics and if_has_gt:
+        # 只有数据里真的带了 GT 时，这些指标才有意义。
         # compute metrics
         lpips = LearnedPerceptualImagePatchSimilarity(net_type='alex')
         ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
@@ -146,7 +159,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         print(f"mean_psnr: {mean_psnr}, mean_lpips_loss: {mean_lpips_loss}, mean_ssim_loss: {mean_ssim_loss}")
         
     
-    # save results
+    # 保存结构和 GT / 环境图 / RT 一起落盘，方便后续做 3D relighting 阶段的数据准备。
     save_dir = os.path.join(args.save_dir, split)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -189,6 +202,13 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
 
 def main(args):
+    """
+    Objaverse/3D relighting 推理入口。
+
+    常见用途:
+    - 为 3D relighting 的后续阶段生成多视角伪监督数据
+    - 在有 GT 的情况下评估不同光照下的推理质量
+    """
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -214,7 +234,8 @@ def main(args):
 
     vae.requires_grad_(False)
     image_encoder.requires_grad_(False)
-    # zero init unet conv_in from 8 channels to 16 channels
+    # 与训练脚本相同:
+    # 把 UNet 输入通道扩展到 16，以适配“噪声 latent + 输入图 latent + HDR / LDR 环境图 latent”的拼接形式。
     conv_in_16 = torch.nn.Conv2d(16, unet.conv_in.out_channels, kernel_size=unet.conv_in.kernel_size, padding=unet.conv_in.padding)
     conv_in_16.requires_grad_(False)
     unet.conv_in.requires_grad_(False)
@@ -230,7 +251,8 @@ def main(args):
         )
 
 
-    # Init Dataset
+    # 构建 Objaverse 风格验证集。
+    # 这类数据通常同时带有多视角图像、环境图和相机 RT。
     image_transforms = torchvision.transforms.Compose(
         [
             torchvision.transforms.Resize((args.resolution, args.resolution), antialias=True),  # 256, 256
