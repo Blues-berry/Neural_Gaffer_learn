@@ -1,13 +1,13 @@
-# Neural Gaffer Training Configuration with Highlight-Weighted Diffusion Loss
+# Neural Gaffer Training Configuration with Image-Space Highlight Constraint
 # 
-# This configuration emphasizes highlight regions directly in latent/noise-space
-# diffusion training, without decoding latents back to image space.
+# This configuration keeps the standard diffusion objective and adds
+# a highlight-aware auxiliary constraint in image space by default.
 #
 # Usage:
 #   python neural_gaffer_training.py --config configs/highlight_aware_training.yaml
 #
 # Or override specific parameters:
-#   python neural_gaffer_training.py --use_highlight_weighted_loss --highlight_loss_weight 2.0 --highlight_threshold 0.8
+#   python neural_gaffer_training.py --use_image_space_highlight_loss true --image_space_constraint_weight 0.1 --highlight_loss_weight 2.0 --highlight_threshold 0.8
 
 # Base model
 pretrained_model_name_or_path: "kxic/zero123-xl"
@@ -51,11 +51,14 @@ checkpointing_steps: 5000
 # Seed
 seed: 42
 
-# ========== HIGHLIGHT-WEIGHTED DIFFUSION LOSS ==========
-# This reweights the standard diffusion loss in highlight regions.
-use_highlight_weighted_loss: true
+# ========== HIGHLIGHT-AWARE LOSSES ==========
+# Default strategy: keep standard diffusion loss, disable latent/noise-space highlight reweighting,
+# and enable a lightweight image-space highlight auxiliary constraint.
+use_highlight_weighted_loss: false
+use_image_space_highlight_loss: true
+image_space_constraint_weight: 0.1
 
-# Extra weight added to highlight regions on top of the base loss.
+# Extra spatial weight added to highlight regions.
 highlight_loss_weight: 2.0
 
 # Luminance threshold used to define highlights from the target image.

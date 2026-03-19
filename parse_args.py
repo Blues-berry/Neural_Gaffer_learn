@@ -249,11 +249,12 @@ def parse_args(input_args=None):
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
 
     # =======================
-    # 高光区域重加权 loss 参数
+    # 高光相关 loss 参数
     # =======================
-    # 这一组参数控制的是:
-    # “在标准 diffusion loss 上，对高光区域额外加权”
-    # 而不是旧版的 physical constraints。
+    # 当前默认策略:
+    # 1. 标准 diffusion loss 继续作为主损失
+    # 2. 默认开启 image-space 高光辅助约束
+    # 3. latent/noise-space 的高光重加权默认关闭
     parser.add_argument(
         "--use_highlight_weighted_loss",
         action="store_true",
@@ -261,7 +262,19 @@ def parse_args(input_args=None):
         # 主开关:
         # - True: 启用高光区域加权
         # - False: 使用普通的全图均匀 MSE
-        help="Whether to upweight highlight regions in the standard diffusion loss."
+        help="Whether to upweight highlight regions directly in latent/noise-space diffusion loss."
+    )
+    parser.add_argument(
+        "--use_image_space_highlight_loss",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=True,
+        help="Whether to apply an auxiliary highlight-aware constraint in image space. Enabled by default."
+    )
+    parser.add_argument(
+        "--image_space_constraint_weight",
+        type=float,
+        default=0.1,
+        help="Overall weight applied to the image-space highlight auxiliary loss."
     )
     parser.add_argument(
         "--highlight_loss_weight",
@@ -269,7 +282,7 @@ def parse_args(input_args=None):
         default=1.0,
         # 高光区域的额外权重。
         # 最终普通区域约为 1，高光区域约为 1 + highlight_loss_weight * score
-        help="Extra loss weight applied to highlight regions."
+        help="Extra spatial weight applied to highlight regions for highlight-aware losses."
     )
     parser.add_argument(
         "--highlight_threshold",

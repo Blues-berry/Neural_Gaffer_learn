@@ -162,13 +162,6 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
     predicted_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
     gt_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
-    highlight_metric_sums = {
-        "highlight_region_ratio": 0.0,
-        "highlight_mse": 0.0,
-        "non_highlight_mse": 0.0,
-        "highlight_mse_ratio": 0.0,
-    }
-    highlight_metric_batches = 0
     
     
     for valid_step, batch in tqdm(enumerate(validation_dataloader)):
@@ -186,61 +179,6 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         pose = batch["T"].to(dtype=weight_dtype)
         # target_orientation = batch["target_orientation"].to(dtype=weight_dtype)
         # pose = torch.cat([pose, target_orientation], dim=-1)
-
-        with torch.no_grad():
-            gt_latents = vae.encode(gt_image).latent_dist.sample().detach()
-            gt_latents = gt_latents * vae.config.scaling_factor
-
-            img_latents = vae.encode(input_image).latent_dist.mode().detach()
-            target_envmap_ldr_latents = vae.encode(target_envmap_ldr).latent_dist.sample().detach()
-            target_envmap_hdr_latents = vae.encode(target_envmap_hdr).latent_dist.mode().detach()
-
-            noise = torch.randn_like(gt_latents)
-            timesteps = torch.randint(
-                0,
-                scheduler.config.num_train_timesteps,
-                (gt_latents.shape[0],),
-                device=gt_latents.device,
-            ).long()
-            noisy_latents = scheduler.add_noise(
-                gt_latents.to(dtype=torch.float32),
-                noise.to(dtype=torch.float32),
-                timesteps,
-            ).to(dtype=img_latents.dtype)
-            prompt_embeds = _encode_image_without_pose(
-                image_encoder,
-                input_image,
-                gt_latents.device,
-                weight_dtype,
-                False,
-            )
-            latent_model_input = torch.cat(
-                [noisy_latents, img_latents, target_envmap_hdr_latents, target_envmap_ldr_latents],
-                dim=1,
-            )
-            model_pred = unet(
-                latent_model_input,
-                timesteps,
-                encoder_hidden_states=prompt_embeds,
-            ).sample
-
-            if scheduler.config.prediction_type == "epsilon":
-                target = noise
-            elif scheduler.config.prediction_type == "v_prediction":
-                target = scheduler.get_velocity(gt_latents, noise, timesteps)
-            else:
-                raise ValueError(f"Unknown prediction type {scheduler.config.prediction_type}")
-
-            per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-            highlight_mask = compute_highlight_mask(
-                gt_image=gt_image,
-                latent_hw=per_pixel_loss.shape[-2:],
-                threshold=getattr(args, "highlight_threshold", 0.8),
-            ).to(device=per_pixel_loss.device, dtype=per_pixel_loss.dtype)
-            batch_highlight_metrics = summarize_highlight_loss_metrics(per_pixel_loss, highlight_mask)
-            for key, value in batch_highlight_metrics.items():
-                highlight_metric_sums[key] += value.item()
-            highlight_metric_batches += 1
 
         cur_predicted_images = []
         batchsize, _, h, w = input_image.shape
@@ -341,18 +279,23 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     ## SSIM
     mean_ssim_loss = ssim(predicted_images_tensor, gt_images_tensor).mean().item()
     # print("SSIM: ", mean_ssim_loss)
-    
-    
+
     logs = {"lpips_loss/{}".format(split): mean_lpips_loss, "ssim_loss/{}".format(split): mean_ssim_loss, "PSNR/{}".format(split): mean_psnr}
     val_metrics.update(logs)
 
-    if highlight_metric_batches > 0:
-        highlight_logs = {
-            f"{metric_name}/{split}": metric_sum / highlight_metric_batches
-            for metric_name, metric_sum in highlight_metric_sums.items()
-        }
-        logs.update(highlight_logs)
-        val_metrics.update(highlight_logs)
+    image_per_pixel_loss = F.mse_loss(predicted_images_tensor.float(), gt_images_tensor.float(), reduction="none")
+    image_highlight_mask = compute_highlight_mask(
+        gt_image=gt_images_tensor * 2 - 1,
+        latent_hw=gt_images_tensor.shape[-2:],
+        threshold=getattr(args, "highlight_threshold", 0.8),
+    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+    image_highlight_metrics = summarize_highlight_loss_metrics(image_per_pixel_loss, image_highlight_mask)
+    highlight_logs = {
+        f"{metric_name}/{split}": value.item()
+        for metric_name, value in image_highlight_metrics.items()
+    }
+    logs.update(highlight_logs)
+    val_metrics.update(highlight_logs)
     
     # 如果用户打开了 compute_metrics，就在验证阶段额外统计高光相关指标。
     if getattr(args, 'compute_metrics', False):
@@ -495,6 +438,43 @@ def compute_highlight_weight_map(
     return 1.0 + extra_weight * highlight_score
 
 
+def predict_x0_from_model_pred(
+    scheduler,
+    model_pred: torch.Tensor,
+    noisy_latents: torch.Tensor,
+    timesteps: torch.Tensor,
+):
+    """
+    从扩散模型输出恢复 pred_x0 latent。
+    """
+    alphas_cumprod = scheduler.alphas_cumprod.to(device=noisy_latents.device, dtype=noisy_latents.dtype)
+    alpha_prod_t = alphas_cumprod[timesteps].view(-1, 1, 1, 1)
+    beta_prod_t = 1.0 - alpha_prod_t
+
+    prediction_type = scheduler.config.prediction_type
+    if prediction_type == "epsilon":
+        pred_x0 = (noisy_latents - beta_prod_t.sqrt() * model_pred) / alpha_prod_t.sqrt().clamp_min(1e-8)
+    elif prediction_type == "v_prediction":
+        pred_x0 = alpha_prod_t.sqrt() * noisy_latents - beta_prod_t.sqrt() * model_pred
+    else:
+        raise ValueError(f"Unsupported prediction type for pred_x0 reconstruction: {prediction_type}")
+
+    return pred_x0
+
+
+def decode_latents_to_image(
+    vae,
+    latents: torch.Tensor,
+    output_dtype: torch.dtype | None = None,
+):
+    """
+    把 VAE latent 解码回 [-1, 1] 图像空间。
+    """
+    decoded = vae.decode((latents / vae.config.scaling_factor).to(dtype=vae.dtype)).sample
+    decoded = decoded.to(dtype=output_dtype or latents.dtype)
+    return decoded.clamp(-1.0, 1.0)
+
+
 def compute_highlight_mask(
     gt_image: torch.Tensor,
     latent_hw: tuple[int, int],
@@ -522,7 +502,7 @@ def summarize_highlight_loss_metrics(
     """
     统计高光区域与非高光区域的 loss 表现。
 
-    这里会先把 channel 维做平均，使 loss 语义更接近“每个 latent 像素的 MSE”。
+    这里会先把 channel 维做平均，使 loss 语义更接近“每个像素位置的 MSE”。
     """
     spatial_loss = per_pixel_loss.mean(dim=1, keepdim=True).float()
     highlight_mask = highlight_mask.float()
@@ -767,19 +747,34 @@ def main(args):
     )
 
 
-    # 这里决定训练时是否启用“高光区域重加权”的 diffusion loss。
-    # 这是本次改动的核心开关。
+    # 当前默认策略:
+    # - 保留标准 diffusion loss 作为主目标
+    # - 默认开启 image-space 高光辅助约束
+    # - 默认关闭 latent/noise-space 的高光重加权
     use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
+    use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", True)
     if use_highlight_weighted_loss:
         logger.info(
-            "Highlight-weighted diffusion loss enabled with weight=%s threshold=%s soft=%s gamma=%s",
+            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s threshold=%s soft=%s gamma=%s",
             getattr(args, "highlight_loss_weight", 1.0),
             getattr(args, "highlight_threshold", 0.8),
             getattr(args, "highlight_soft_weighting", False),
             getattr(args, "highlight_gamma", 2.0),
         )
     else:
-        logger.info("Highlight-weighted diffusion loss disabled")
+        logger.info("Latent/noise-space highlight-weighted diffusion loss disabled")
+
+    if use_image_space_highlight_loss:
+        logger.info(
+            "Image-space highlight constraint enabled with constraint_weight=%s highlight_weight=%s threshold=%s soft=%s gamma=%s",
+            getattr(args, "image_space_constraint_weight", 0.1),
+            getattr(args, "highlight_loss_weight", 1.0),
+            getattr(args, "highlight_threshold", 0.8),
+            getattr(args, "highlight_soft_weighting", False),
+            getattr(args, "highlight_gamma", 2.0),
+        )
+    else:
+        logger.info("Image-space highlight constraint disabled")
     
     # print model info, learnable parameters, non-learnable parameters, total parameters, model size, all in billion
     def print_model_info(model):
@@ -1134,16 +1129,15 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
                 # per_pixel_loss:
-                # - 这是标准 diffusion 训练里最核心的逐像素 MSE
+                # - 标准 diffusion 训练里最核心的逐像素噪声 MSE
                 # - 形状与 model_pred / target 相同
-                # - 之所以先不立刻 mean，是因为后面要在空间维度上做加权
-                per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                highlight_mask = compute_highlight_mask(
+                diffusion_per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                latent_highlight_mask = compute_highlight_mask(
                     gt_image=gt_image,
-                    latent_hw=per_pixel_loss.shape[-2:],
+                    latent_hw=diffusion_per_pixel_loss.shape[-2:],
                     threshold=getattr(args, "highlight_threshold", 0.8),
-                ).to(device=per_pixel_loss.device, dtype=per_pixel_loss.dtype)
-                highlight_metric_tensors = summarize_highlight_loss_metrics(per_pixel_loss, highlight_mask)
+                ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
+                latent_highlight_metric_tensors = summarize_highlight_loss_metrics(diffusion_per_pixel_loss, latent_highlight_mask)
                 logging_steps = max(1, getattr(args, "logging_steps", 50))
                 should_log_highlight_metrics = global_step % logging_steps == 0
 
@@ -1152,27 +1146,82 @@ def main(args):
                     # 这样模型在学习噪声时，会对高光区域承担更大的误差惩罚。
                     weight_map = compute_highlight_weight_map(
                         gt_image=gt_image,
-                        latent_hw=per_pixel_loss.shape[-2:],
+                        latent_hw=diffusion_per_pixel_loss.shape[-2:],
                         threshold=getattr(args, "highlight_threshold", 0.8),
                         extra_weight=getattr(args, "highlight_loss_weight", 1.0),
                         soft_weighting=getattr(args, "highlight_soft_weighting", False),
                         gamma=getattr(args, "highlight_gamma", 2.0),
-                    ).to(device=per_pixel_loss.device, dtype=per_pixel_loss.dtype)
+                    ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                     # weighted_loss: 每个位置的 loss 乘以空间权重
-                    weighted_loss = per_pixel_loss * weight_map
+                    weighted_loss = diffusion_per_pixel_loss * weight_map
                     # norm: 用于归一化，避免“权重越大，总 loss 就机械变大太多”
-                    # per_pixel_loss.shape[1] 对应通道数 C
-                    norm = weight_map.sum() * per_pixel_loss.shape[1]
-                    loss = weighted_loss.sum() / norm.clamp_min(1e-6)
+                    # diffusion_per_pixel_loss.shape[1] 对应通道数 C
+                    norm = weight_map.sum() * diffusion_per_pixel_loss.shape[1]
+                    diffusion_loss = weighted_loss.sum() / norm.clamp_min(1e-6)
                 else:
-                    loss = per_pixel_loss.mean()
+                    diffusion_loss = diffusion_per_pixel_loss.mean()
+
+                image_space_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
+                active_highlight_metric_tensors = latent_highlight_metric_tensors
+                highlight_logs_prefix = ""
+
+                if use_image_space_highlight_loss:
+                    pred_x0_latents = predict_x0_from_model_pred(
+                        noise_scheduler,
+                        model_pred.float(),
+                        noisy_latents.float(),
+                        timesteps,
+                    )
+                    pred_x0_image = decode_latents_to_image(
+                        vae,
+                        pred_x0_latents,
+                        output_dtype=gt_image.dtype,
+                    )
+                    image_per_pixel_loss = F.mse_loss(pred_x0_image.float(), gt_image.float(), reduction="none")
+                    image_weight_map = compute_highlight_weight_map(
+                        gt_image=gt_image,
+                        latent_hw=image_per_pixel_loss.shape[-2:],
+                        threshold=getattr(args, "highlight_threshold", 0.8),
+                        extra_weight=getattr(args, "highlight_loss_weight", 1.0),
+                        soft_weighting=getattr(args, "highlight_soft_weighting", False),
+                        gamma=getattr(args, "highlight_gamma", 2.0),
+                    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+                    image_weighted_loss = image_per_pixel_loss * image_weight_map
+                    image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
+                    image_space_loss = image_weighted_loss.sum() / image_norm.clamp_min(1e-6)
+
+                    image_highlight_mask = compute_highlight_mask(
+                        gt_image=gt_image,
+                        latent_hw=image_per_pixel_loss.shape[-2:],
+                        threshold=getattr(args, "highlight_threshold", 0.8),
+                    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+                    active_highlight_metric_tensors = summarize_highlight_loss_metrics(
+                        image_per_pixel_loss,
+                        image_highlight_mask,
+                    )
+                    highlight_logs_prefix = "image_space/"
+
+                loss = diffusion_loss + getattr(args, "image_space_constraint_weight", 0.1) * image_space_loss
 
                 if should_log_highlight_metrics:
                     reduced_highlight_metrics = {
                         key: accelerator.reduce(value.detach(), reduction="mean").item()
-                        for key, value in highlight_metric_tensors.items()
+                        for key, value in active_highlight_metric_tensors.items()
                     }
-                    highlight_logs = reduced_highlight_metrics
+                    highlight_logs = dict(reduced_highlight_metrics)
+                    if highlight_logs_prefix:
+                        highlight_logs.update(
+                            {
+                                f"{highlight_logs_prefix}{key}": value
+                                for key, value in reduced_highlight_metrics.items()
+                            }
+                        )
+                    highlight_logs.update(
+                        {
+                            "loss_diffusion": accelerator.reduce(diffusion_loss.detach(), reduction="mean").item(),
+                            "loss_image_space_constraint": accelerator.reduce(image_space_loss.detach(), reduction="mean").item(),
+                        }
+                    )
                     if use_highlight_weighted_loss:
                         highlight_logs = {
                             **highlight_logs,
@@ -1180,6 +1229,14 @@ def main(args):
                             "highlight_weight/max": accelerator.reduce(weight_map.max().detach(), reduction="mean").item(),
                             "highlight_weight/highlight_fraction": accelerator.reduce(
                                 (weight_map > 1.0).float().mean().detach(),
+                                reduction="mean",
+                            ).item(),
+                        }
+                    if use_image_space_highlight_loss:
+                        highlight_logs = {
+                            **highlight_logs,
+                            "image_space/highlight_weight_mean": accelerator.reduce(
+                                image_weight_map.mean().detach(),
                                 reduction="mean",
                             ).item(),
                         }
