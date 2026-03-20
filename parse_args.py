@@ -306,6 +306,12 @@ def parse_args(input_args=None):
         # 是否使用平滑的连续权重，而不是简单的 0/1 二值 mask。
         help="Use a soft highlight score instead of a binary threshold mask."
     )
+    parser.add_argument(
+        "--foreground_background_threshold",
+        type=float,
+        default=0.98,
+        help="Pixels with all RGB channels close to 1 above this threshold are treated as white background and excluded from highlight-related masks and losses.",
+    )
 
     parser.add_argument(
         "--train_img_dir",
@@ -383,6 +389,24 @@ def parse_args(input_args=None):
         help=(
             "Fallback wandb project name. Training will first try to reuse the most recent local wandb project,"
             " and only fall back to this value if no previous project can be inferred."
+        ),
+    )
+    parser.add_argument(
+        "--wandb_run_name",
+        type=str,
+        default=None,
+        help=(
+            "Optional explicit wandb run name. If not provided, training will build a descriptive name from the"
+            " active loss settings plus a timestamp."
+        ),
+    )
+    parser.add_argument(
+        "--wandb_run_note",
+        type=str,
+        default=None,
+        help=(
+            "Optional short note appended to the auto-generated wandb run name, for example ablation, threshold_tune,"
+            " or better_mask_vis."
         ),
     )
 

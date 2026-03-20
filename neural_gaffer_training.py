@@ -15,7 +15,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from dataset.dataset_relighting_training import NeuralGafferTrainingDataLoader, NeuralGafferTrainingData
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
-from PIL import Image
+from PIL import Image, ImageDraw
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
@@ -74,6 +74,58 @@ def image_grid(imgs, rows, cols):
     for i, img in enumerate(imgs):
         grid.paste(img, box=(i % cols * w, i // cols * h))
     return grid
+
+
+def compute_panel_brightness_stats(panel_image: np.ndarray) -> dict:
+    """
+    统计单列可视化图像的亮度分布。
+
+    参数:
+    - panel_image: [H, W, 3]，取值范围 [0, 1]
+
+    返回:
+    - mean / p95 / p99 / max 四个亮度统计量
+    """
+    panel_image = np.clip(panel_image.astype(np.float32), 0.0, 1.0)
+    luminance = (
+        0.299 * panel_image[..., 0]
+        + 0.587 * panel_image[..., 1]
+        + 0.114 * panel_image[..., 2]
+    )
+    return {
+        "mean": float(luminance.mean()),
+        "p95": float(np.quantile(luminance, 0.95)),
+        "p99": float(np.quantile(luminance, 0.99)),
+        "max": float(luminance.max()),
+    }
+
+
+def add_panel_headers(
+    panel_strip_image: Image.Image,
+    panel_labels: list[str],
+    panel_stats: list[dict],
+    panel_width: int,
+    header_height: int = 42,
+) -> Image.Image:
+    """
+    给验证拼图增加一行表头，标出每列名称和平均亮度。
+    """
+    labeled_image = Image.new(
+        "RGB",
+        size=(panel_strip_image.width, panel_strip_image.height + header_height),
+        color=(255, 255, 255),
+    )
+    labeled_image.paste(panel_strip_image, box=(0, header_height))
+
+    draw = ImageDraw.Draw(labeled_image)
+    for idx, (label, stats) in enumerate(zip(panel_labels, panel_stats)):
+        x0 = idx * panel_width
+        x1 = x0 + panel_width - 1
+        draw.rectangle([(x0, 0), (x1, header_height - 1)], outline=(200, 200, 200), width=1)
+        draw.text((x0 + 6, 5), label, fill=(0, 0, 0))
+        draw.text((x0 + 6, 22), f"mu={stats['mean']:.3f}", fill=(80, 80, 80))
+
+    return labeled_image
 
 
 def compute_specular_metrics(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.8) -> dict:
@@ -159,6 +211,17 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     image_logs = []
+    panel_names = [
+        "input",
+        "gt",
+        "pred_0",
+        "pred_1",
+        "highlight_mask",
+        "highlight_weight",
+        "env_ldr",
+        "env_hdr",
+    ]
+    panel_stats_across_batches = {panel_name: [] for panel_name in panel_names}
 
     predicted_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
     gt_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
@@ -230,24 +293,43 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         envir_map_target_ldr_npy_new = envir_map_target_ldr_npy.reshape((1,-1, w, 3)).squeeze()
         highlight_mask_npy_new = highlight_mask_npy.reshape((1,-1, w, 3)).squeeze()
         highlight_weight_npy_new = highlight_weight_npy.reshape((1,-1, w, 3)).squeeze()
-        concatenated_image = np.concatenate(
-            [
-                input_image_npy_new,
-                gt_image_npy_new,
-                prediction_image_sample0_new,
-                prediction_image_sample1_new,
-                highlight_mask_npy_new,
-                highlight_weight_npy_new,
-                envir_map_target_ldr_npy_new,
-                envir_map_target_hdr_npy_new,
-            ],
-            axis=1,
+        panel_images = [
+            input_image_npy_new,
+            gt_image_npy_new,
+            prediction_image_sample0_new,
+            prediction_image_sample1_new,
+            highlight_mask_npy_new,
+            highlight_weight_npy_new,
+            envir_map_target_ldr_npy_new,
+            envir_map_target_hdr_npy_new,
+        ]
+        panel_stats = [compute_panel_brightness_stats(panel_image) for panel_image in panel_images]
+        for panel_name, stats in zip(panel_names, panel_stats):
+            panel_stats_across_batches[panel_name].append(stats)
+
+        logger.info(
+            "[%s][step=%s][batch=%s] panel brightness stats: %s",
+            split,
+            cur_step,
+            valid_step,
+            " | ".join(
+                f"{panel_name}: mean={stats['mean']:.3f}, p95={stats['p95']:.3f}, p99={stats['p99']:.3f}, max={stats['max']:.3f}"
+                for panel_name, stats in zip(panel_names, panel_stats)
+            ),
         )
+
+        concatenated_image = np.concatenate(panel_images, axis=1)
 
         # result: 大拼图，便于整体观察
         # highlight_mask: 二值高光区域
         # highlight_weight: 真正参与 loss 加权的权重图（已归一化到 [0, 1] 便于显示）
         concatenated_image = Image.fromarray((concatenated_image * 255).astype(np.uint8))
+        concatenated_image = add_panel_headers(
+            concatenated_image,
+            panel_names,
+            panel_stats,
+            panel_width=w,
+        )
         image_logs.append(
             {
                 "result": concatenated_image,
@@ -288,14 +370,33 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         gt_image=gt_images_tensor * 2 - 1,
         latent_hw=gt_images_tensor.shape[-2:],
         threshold=getattr(args, "highlight_threshold", 0.8),
+        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
-    image_highlight_metrics = summarize_highlight_loss_metrics(image_per_pixel_loss, image_highlight_mask)
+    image_foreground_mask = compute_foreground_mask(
+        gt_image=gt_images_tensor * 2 - 1,
+        latent_hw=gt_images_tensor.shape[-2:],
+        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+    image_highlight_metrics = summarize_highlight_loss_metrics(
+        image_per_pixel_loss,
+        image_highlight_mask,
+        valid_mask=image_foreground_mask,
+    )
     highlight_logs = {
         f"{metric_name}/{split}": value.item()
         for metric_name, value in image_highlight_metrics.items()
     }
     logs.update(highlight_logs)
     val_metrics.update(highlight_logs)
+
+    for panel_name, stats_list in panel_stats_across_batches.items():
+        if not stats_list:
+            continue
+        for stat_name in ("mean", "p95", "p99", "max"):
+            stat_value = float(np.mean([stats[stat_name] for stats in stats_list]))
+            metric_key = f"panel_brightness/{split}/{panel_name}/{stat_name}"
+            logs[metric_key] = stat_value
+            val_metrics[metric_key] = stat_value
     
     # 如果用户打开了 compute_metrics，就在验证阶段额外统计高光相关指标。
     if getattr(args, 'compute_metrics', False):
@@ -320,18 +421,24 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
     for tracker in accelerator.trackers:
         if tracker.name == "wandb":
-            formatted_images = []
+            result_images = []
+            highlight_mask_images = []
+            highlight_weight_images = []
 
             for log_id, log in enumerate(image_logs):
-                # 这里会把三类图分别打到 wandb:
-                # 1. 整体拼图
-                # 2. 高光 mask
-                # 3. 高光权重图
-                formatted_images.append(wandb.Image(log["result"], caption="{}_result".format(log_id)))
-                formatted_images.append(wandb.Image(log["highlight_mask"], caption="{}_highlight_mask".format(log_id)))
-                formatted_images.append(wandb.Image(log["highlight_weight"], caption="{}_highlight_weight".format(log_id)))
+                # 把不同尺寸的图分别上传，避免 wandb 因同一个列表中混入不同分辨率而报 warning。
+                result_images.append(wandb.Image(log["result"], caption="{}_result".format(log_id)))
+                highlight_mask_images.append(wandb.Image(log["highlight_mask"], caption="{}_highlight_mask".format(log_id)))
+                highlight_weight_images.append(wandb.Image(log["highlight_weight"], caption="{}_highlight_weight".format(log_id)))
 
-            tracker.log({split: formatted_images}, step=cur_step)
+            tracker.log(
+                {
+                    f"{split}/result": result_images,
+                    f"{split}/highlight_mask": highlight_mask_images,
+                    f"{split}/highlight_weight": highlight_weight_images,
+                },
+                step=cur_step,
+            )
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
 
@@ -389,6 +496,30 @@ def CLIP_preprocess(x):
     return x
 
 
+def compute_foreground_mask(
+    gt_image: torch.Tensor,
+    latent_hw: tuple[int, int],
+    background_threshold: float = 0.98,
+):
+    """
+    基于“接近纯白背景”的假设估计前景 mask。
+
+    当前数据集的渲染背景基本是白色，因此这里把 RGB 三通道都非常接近 1 的区域视为背景，
+    其余区域视为前景。mask 会被缩放到目标分辨率，用于高光图和 loss 的前景约束。
+    """
+    gt_img_01 = (gt_image.float() + 1.0) / 2.0
+    foreground_mask = (gt_img_01.amin(dim=1, keepdim=True) < background_threshold).float()
+    if foreground_mask.shape[-2:] != latent_hw:
+        foreground_mask = F.interpolate(
+            foreground_mask,
+            size=latent_hw,
+            mode="bilinear",
+            align_corners=False,
+        )
+        foreground_mask = (foreground_mask > 0.5).float()
+    return foreground_mask
+
+
 def compute_highlight_weight_map(
     gt_image: torch.Tensor,
     latent_hw: tuple[int, int],
@@ -396,6 +527,7 @@ def compute_highlight_weight_map(
     extra_weight: float = 1.0,
     soft_weighting: bool = False,
     gamma: float = 2.0,
+    background_threshold: float = 0.98,
 ):
     """
     根据真实目标图像生成“高光区域权重图”，并缩放到 latent / noise loss 的分辨率。
@@ -424,10 +556,18 @@ def compute_highlight_weight_map(
         + 0.114 * gt_img_01[:, 2:3]
     )
 
+    foreground_mask = compute_foreground_mask(
+        gt_image=gt_image,
+        latent_hw=luminance.shape[-2:],
+        background_threshold=background_threshold,
+    )
+
     if soft_weighting:
         highlight_score = ((luminance - threshold).clamp(min=0.0) / max(1e-6, 1.0 - threshold)) ** gamma
     else:
         highlight_score = (luminance > threshold).float()
+
+    highlight_score = highlight_score * foreground_mask
 
     highlight_score = F.interpolate(
         highlight_score,
@@ -435,7 +575,12 @@ def compute_highlight_weight_map(
         mode="bilinear",
         align_corners=False,
     )
-    return 1.0 + extra_weight * highlight_score
+    foreground_mask = compute_foreground_mask(
+        gt_image=gt_image,
+        latent_hw=latent_hw,
+        background_threshold=background_threshold,
+    ).to(device=highlight_score.device, dtype=highlight_score.dtype)
+    return foreground_mask * (1.0 + extra_weight * highlight_score)
 
 
 def predict_x0_from_model_pred(
@@ -479,6 +624,7 @@ def compute_highlight_mask(
     gt_image: torch.Tensor,
     latent_hw: tuple[int, int],
     threshold: float = 0.8,
+    background_threshold: float = 0.98,
 ):
     """
     生成与 latent loss 分辨率对齐的二值高光区域 mask。
@@ -489,7 +635,12 @@ def compute_highlight_mask(
         + 0.587 * gt_img_01[:, 1:2]
         + 0.114 * gt_img_01[:, 2:3]
     )
-    highlight_mask = (luminance > threshold).float()
+    foreground_mask = compute_foreground_mask(
+        gt_image=gt_image,
+        latent_hw=luminance.shape[-2:],
+        background_threshold=background_threshold,
+    )
+    highlight_mask = (luminance > threshold).float() * foreground_mask
     if highlight_mask.shape[-2:] != latent_hw:
         highlight_mask = F.interpolate(highlight_mask, size=latent_hw, mode="nearest")
     return highlight_mask
@@ -498,6 +649,7 @@ def compute_highlight_mask(
 def summarize_highlight_loss_metrics(
     per_pixel_loss: torch.Tensor,
     highlight_mask: torch.Tensor,
+    valid_mask: torch.Tensor | None = None,
 ):
     """
     统计高光区域与非高光区域的 loss 表现。
@@ -506,7 +658,12 @@ def summarize_highlight_loss_metrics(
     """
     spatial_loss = per_pixel_loss.mean(dim=1, keepdim=True).float()
     highlight_mask = highlight_mask.float()
-    non_highlight_mask = 1.0 - highlight_mask
+    if valid_mask is None:
+        valid_mask = torch.ones_like(highlight_mask)
+    else:
+        valid_mask = valid_mask.float()
+    highlight_mask = highlight_mask * valid_mask
+    non_highlight_mask = (valid_mask - highlight_mask).clamp(min=0.0)
 
     highlight_sum = highlight_mask.sum()
     non_highlight_sum = non_highlight_mask.sum()
@@ -542,6 +699,7 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         gt_image=gt_image,
         latent_hw=luminance.shape[-2:],
         threshold=getattr(args, "highlight_threshold", 0.8),
+        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
     )
     weight_map = compute_highlight_weight_map(
         gt_image=gt_image,
@@ -550,6 +708,7 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         extra_weight=getattr(args, "highlight_loss_weight", 1.0),
         soft_weighting=getattr(args, "highlight_soft_weighting", False),
         gamma=getattr(args, "highlight_gamma", 2.0),
+        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
     )
     weight_norm = ((weight_map - 1.0) / max(1e-6, getattr(args, "highlight_loss_weight", 1.0))).clamp(0.0, 1.0)
 
@@ -585,6 +744,61 @@ def resolve_wandb_project_name(args) -> str:
         logger.warning("Failed to infer the last wandb project from %s: %s", debug_log_path, exc)
 
     return fallback_project
+
+
+def _sanitize_wandb_name_part(value: str) -> str:
+    """
+    把自由文本压缩成更适合作为 wandb run 名称片段的形式。
+    """
+    value = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+    value = re.sub(r"-{2,}", "-", value).strip("-_.")
+    return value
+
+
+def build_wandb_run_name(args) -> str:
+    """
+    自动生成当前实验的 wandb run 名称。
+
+    命名策略:
+    - 先保留 output_dir 的语义
+    - 再写入当前启用的关键训练改动
+    - 最后追加 UTC 时间戳
+    - 如果用户提供 wandb_run_note，则把备注一并附上
+    """
+    if getattr(args, "wandb_run_name", None):
+        return args.wandb_run_name
+
+    output_basename = os.path.basename(args.output_dir.rstrip("/")) or "neural_gaffer"
+    parts = [output_basename]
+
+    use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
+    use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", False)
+
+    if use_highlight_weighted_loss:
+        parts.append("latent_hl_soft" if getattr(args, "highlight_soft_weighting", False) else "latent_hl_hard")
+    if use_image_space_highlight_loss:
+        parts.append("img_hl_soft" if getattr(args, "highlight_soft_weighting", False) else "img_hl_hard")
+    if not use_highlight_weighted_loss and not use_image_space_highlight_loss:
+        parts.append("plain_diffusion")
+
+    threshold = getattr(args, "highlight_threshold", None)
+    extra_weight = getattr(args, "highlight_loss_weight", None)
+    gamma = getattr(args, "highlight_gamma", None)
+    if threshold is not None:
+        parts.append(f"t{threshold:g}")
+    if extra_weight is not None and (use_highlight_weighted_loss or use_image_space_highlight_loss):
+        parts.append(f"w{extra_weight:g}")
+    if gamma is not None and getattr(args, "highlight_soft_weighting", False):
+        parts.append(f"g{gamma:g}")
+
+    note = getattr(args, "wandb_run_note", None)
+    if note:
+        sanitized_note = _sanitize_wandb_name_part(note)
+        if sanitized_note:
+            parts.append(sanitized_note)
+
+    parts.append(datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%SZ"))
+    return "-".join(_sanitize_wandb_name_part(part) for part in parts if part)
 
 def _encode_image(image_encoder, image, device, dtype, do_classifier_free_guidance):
 
@@ -978,11 +1192,16 @@ def main(args):
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
         tracker_project_name = resolve_wandb_project_name(args)
+        tracker_run_name = build_wandb_run_name(args)
         tracker_config["tracker_project_name"] = tracker_project_name
-         # specified the run name
-        output_basename = os.path.basename(args.output_dir)
+        tracker_config["wandb_run_name"] = tracker_run_name
         logger.info("Using wandb project: %s", tracker_project_name)
-        accelerator.init_trackers(tracker_project_name, config=tracker_config, init_kwargs={"wandb": {"name": f'{output_basename}'}})
+        logger.info("Using wandb run name: %s", tracker_run_name)
+        accelerator.init_trackers(
+            tracker_project_name,
+            config=tracker_config,
+            init_kwargs={"wandb": {"name": tracker_run_name}},
+        )
 
     # Train!
     total_batch_size = args.training_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1136,8 +1355,18 @@ def main(args):
                     gt_image=gt_image,
                     latent_hw=diffusion_per_pixel_loss.shape[-2:],
                     threshold=getattr(args, "highlight_threshold", 0.8),
+                    background_threshold=getattr(args, "foreground_background_threshold", 0.98),
                 ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
-                latent_highlight_metric_tensors = summarize_highlight_loss_metrics(diffusion_per_pixel_loss, latent_highlight_mask)
+                latent_foreground_mask = compute_foreground_mask(
+                    gt_image=gt_image,
+                    latent_hw=diffusion_per_pixel_loss.shape[-2:],
+                    background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
+                latent_highlight_metric_tensors = summarize_highlight_loss_metrics(
+                    diffusion_per_pixel_loss,
+                    latent_highlight_mask,
+                    valid_mask=latent_foreground_mask,
+                )
                 logging_steps = max(1, getattr(args, "logging_steps", 50))
                 should_log_highlight_metrics = global_step % logging_steps == 0
 
@@ -1151,6 +1380,7 @@ def main(args):
                         extra_weight=getattr(args, "highlight_loss_weight", 1.0),
                         soft_weighting=getattr(args, "highlight_soft_weighting", False),
                         gamma=getattr(args, "highlight_gamma", 2.0),
+                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
                     ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                     # weighted_loss: 每个位置的 loss 乘以空间权重
                     weighted_loss = diffusion_per_pixel_loss * weight_map
@@ -1185,6 +1415,7 @@ def main(args):
                         extra_weight=getattr(args, "highlight_loss_weight", 1.0),
                         soft_weighting=getattr(args, "highlight_soft_weighting", False),
                         gamma=getattr(args, "highlight_gamma", 2.0),
+                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
                     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                     image_weighted_loss = image_per_pixel_loss * image_weight_map
                     image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
@@ -1194,10 +1425,17 @@ def main(args):
                         gt_image=gt_image,
                         latent_hw=image_per_pixel_loss.shape[-2:],
                         threshold=getattr(args, "highlight_threshold", 0.8),
+                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+                    image_foreground_mask = compute_foreground_mask(
+                        gt_image=gt_image,
+                        latent_hw=image_per_pixel_loss.shape[-2:],
+                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
                     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                     active_highlight_metric_tensors = summarize_highlight_loss_metrics(
                         image_per_pixel_loss,
                         image_highlight_mask,
+                        valid_mask=image_foreground_mask,
                     )
                     highlight_logs_prefix = "image_space/"
 
