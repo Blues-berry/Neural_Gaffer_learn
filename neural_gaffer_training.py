@@ -77,6 +77,49 @@ COLLAPSE_PRED_MEAN_KEYS = (
 )
 
 
+def ensure_kornia_laplacian_compat():
+    """
+    为旧版 kornia 补上 diffusers 0.37 期望的 build_laplacian_pyramid 符号。
+
+    这是一个兼容性补丁，不改变当前验证逻辑。
+    只有当 kornia 缺少该导出时，才注入一个等价的 Laplacian pyramid 实现，
+    让 DiffusionPipeline.from_pretrained 在导入 guiders 时不再报错。
+    """
+    transform_module = getattr(kornia.geometry, "transform", None)
+    if transform_module is None or hasattr(transform_module, "build_laplacian_pyramid"):
+        return
+
+    pyrdown = getattr(transform_module, "pyrdown", None)
+    pyrup = getattr(kornia.geometry, "pyrup", None)
+    if pyrdown is None or pyrup is None:
+        logger.warning(
+            "Skipping kornia compatibility patch because pyrdown/pyrup are unavailable; validation may still fail."
+        )
+        return
+
+    def build_laplacian_pyramid(image: torch.Tensor, max_level: int):
+        if max_level <= 0:
+            return [image]
+
+        current = image
+        pyramid = []
+        for _ in range(max_level - 1):
+            down = pyrdown(current)
+            up = pyrup(down)
+            if up.shape[-2:] != current.shape[-2:]:
+                up = F.interpolate(up, size=current.shape[-2:], mode="bilinear", align_corners=False)
+            pyramid.append(current - up)
+            current = down
+        pyramid.append(current)
+        return pyramid
+
+    setattr(transform_module, "build_laplacian_pyramid", build_laplacian_pyramid)
+    logger.info("Patched kornia.geometry.transform.build_laplacian_pyramid for diffusers compatibility.")
+
+
+ensure_kornia_laplacian_compat()
+
+
 def tensor_is_finite(tensor: torch.Tensor) -> bool:
     return bool(torch.isfinite(tensor).all().item())
 
@@ -88,6 +131,23 @@ def model_has_non_finite_gradients(parameters) -> bool:
         if not tensor_is_finite(parameter.grad):
             return True
     return False
+
+
+def reset_amp_scaler_after_skipped_step(accelerator: Accelerator):
+    """
+    在 AMP 模式下，跳过 optimizer.step() 后主动刷新 scaler 状态。
+
+    否则下一次 clip/unscale 可能看到“已经 unscale 过但尚未 update”的旧状态，
+    从而报 `unscale_() has already been called`。
+    """
+    scaler = getattr(accelerator, "scaler", None)
+    if scaler is None:
+        return
+    if not getattr(accelerator, "native_amp", False):
+        return
+    if getattr(accelerator, "mixed_precision", None) != "fp16":
+        return
+    scaler.update()
 
 
 def sanitize_log_dict(logs: dict) -> tuple[dict, dict]:
@@ -114,6 +174,18 @@ def sanitize_log_dict(logs: dict) -> tuple[dict, dict]:
         sanitized[key] = value
 
     return sanitized, skipped
+
+
+def linear_warmup_scale(global_step: int, warmup_steps: int) -> float:
+    if warmup_steps is None or warmup_steps <= 0:
+        return 1.0
+    if global_step <= 0:
+        return 0.0
+    return float(min(max(global_step / float(warmup_steps), 0.0), 1.0))
+
+
+def get_warmup_scaled_weight(base_weight: float, global_step: int, warmup_steps: int) -> float:
+    return float(base_weight) * linear_warmup_scale(global_step, warmup_steps)
 
 
 def extract_validation_psnr_score(step_log: dict) -> tuple[float | None, list[str]]:
@@ -1070,6 +1142,8 @@ def build_wandb_run_name(args) -> str:
     threshold = getattr(args, "highlight_threshold", None)
     extra_weight = getattr(args, "highlight_loss_weight", None)
     gamma = getattr(args, "highlight_gamma", None)
+    image_space_constraint_warmup_steps = int(getattr(args, "image_space_constraint_warmup_steps", 0) or 0)
+    highlight_loss_weight_warmup_steps = int(getattr(args, "highlight_loss_weight_warmup_steps", 0) or 0)
     if getattr(args, "highlight_use_quantile_threshold", False):
         parts.append(f"q{_format_run_float_token(getattr(args, 'highlight_quantile', 0.95), scale=100)}")
     elif threshold is not None:
@@ -1079,6 +1153,14 @@ def build_wandb_run_name(args) -> str:
         parts.append(f"w{extra_weight:g}")
     if gamma is not None and getattr(args, "highlight_soft_weighting", False):
         parts.append(f"g{gamma:g}")
+    if image_space_constraint_warmup_steps > 0 or highlight_loss_weight_warmup_steps > 0:
+        if image_space_constraint_warmup_steps == highlight_loss_weight_warmup_steps:
+            parts.append(f"wu{int(image_space_constraint_warmup_steps / 1000)}k")
+        else:
+            if image_space_constraint_warmup_steps > 0:
+                parts.append(f"iwu{int(image_space_constraint_warmup_steps / 1000)}k")
+            if highlight_loss_weight_warmup_steps > 0:
+                parts.append(f"hwu{int(highlight_loss_weight_warmup_steps / 1000)}k")
     if getattr(args, "max_train_steps", None):
         parts.append(f"{int(args.max_train_steps / 1000)}k")
 
@@ -1261,8 +1343,9 @@ def main(args):
     use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", True)
     if use_highlight_weighted_loss:
         logger.info(
-            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
+            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
             getattr(args, "highlight_loss_weight", 1.0),
+            getattr(args, "highlight_loss_weight_warmup_steps", 0),
             getattr(args, "highlight_threshold", 0.8),
             getattr(args, "highlight_soft_weighting", False),
             getattr(args, "highlight_gamma", 2.0),
@@ -1276,9 +1359,11 @@ def main(args):
 
     if use_image_space_highlight_loss:
         logger.info(
-            "Image-space highlight constraint enabled with constraint_weight=%s highlight_weight=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
+            "Image-space highlight constraint enabled with constraint_weight=%s constraint_warmup_steps=%s highlight_weight=%s highlight_weight_warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
             getattr(args, "image_space_constraint_weight", 0.1),
+            getattr(args, "image_space_constraint_warmup_steps", 0),
             getattr(args, "highlight_loss_weight", 1.0),
+            getattr(args, "highlight_loss_weight_warmup_steps", 0),
             getattr(args, "highlight_threshold", 0.8),
             getattr(args, "highlight_soft_weighting", False),
             getattr(args, "highlight_gamma", 2.0),
@@ -1509,14 +1594,26 @@ def main(args):
         tracker_config = dict(vars(args))
         tracker_project_name = resolve_wandb_project_name(args)
         tracker_run_name = build_wandb_run_name(args)
+        wandb_resume_id = getattr(args, "wandb_resume_id", None) or os.environ.get("WANDB_RUN_ID")
+        wandb_resume_mode = getattr(args, "wandb_resume_mode", None) or os.environ.get("WANDB_RESUME")
         tracker_config["tracker_project_name"] = tracker_project_name
         tracker_config["wandb_run_name"] = tracker_run_name
+        tracker_config["wandb_resume_id"] = wandb_resume_id
+        tracker_config["wandb_resume_mode"] = wandb_resume_mode
         logger.info("Using wandb project: %s", tracker_project_name)
         logger.info("Using wandb run name: %s", tracker_run_name)
+        if wandb_resume_id:
+            logger.info("Resuming wandb run id: %s (mode=%s)", wandb_resume_id, wandb_resume_mode or "allow")
+        wandb_init_kwargs = {}
+        if not wandb_resume_id or getattr(args, "wandb_run_name", None):
+            wandb_init_kwargs["name"] = tracker_run_name
+        if wandb_resume_id:
+            wandb_init_kwargs["id"] = wandb_resume_id
+            wandb_init_kwargs["resume"] = wandb_resume_mode or "allow"
         accelerator.init_trackers(
             tracker_project_name,
             config=tracker_config,
-            init_kwargs={"wandb": {"name": tracker_run_name}},
+            init_kwargs={"wandb": wandb_init_kwargs},
         )
 
     # Train!
@@ -1719,6 +1816,17 @@ def main(args):
                 logging_steps = max(1, getattr(args, "logging_steps", 50))
                 should_log_highlight_metrics = global_step % logging_steps == 0
 
+                effective_highlight_loss_weight = get_warmup_scaled_weight(
+                    getattr(args, "highlight_loss_weight", 1.0),
+                    global_step=global_step,
+                    warmup_steps=getattr(args, "highlight_loss_weight_warmup_steps", 0),
+                )
+                effective_image_space_constraint_weight = get_warmup_scaled_weight(
+                    getattr(args, "image_space_constraint_weight", 0.1),
+                    global_step=global_step,
+                    warmup_steps=getattr(args, "image_space_constraint_warmup_steps", 0),
+                )
+
                 weight_map = None
                 if use_highlight_weighted_loss:
                     # 根据真实目标图生成一个与 latent 分辨率一致的空间权重图。
@@ -1727,7 +1835,7 @@ def main(args):
                         gt_image=gt_image,
                         latent_hw=diffusion_per_pixel_loss.shape[-2:],
                         threshold=getattr(args, "highlight_threshold", 0.8),
-                        extra_weight=getattr(args, "highlight_loss_weight", 1.0),
+                        extra_weight=effective_highlight_loss_weight,
                         soft_weighting=getattr(args, "highlight_soft_weighting", False),
                         gamma=getattr(args, "highlight_gamma", 2.0),
                         background_threshold=getattr(args, "foreground_background_threshold", 0.98),
@@ -1769,7 +1877,7 @@ def main(args):
                                 gt_image=gt_image,
                                 latent_hw=image_per_pixel_loss.shape[-2:],
                                 threshold=getattr(args, "highlight_threshold", 0.8),
-                                extra_weight=getattr(args, "highlight_loss_weight", 1.0),
+                                extra_weight=effective_highlight_loss_weight,
                                 soft_weighting=getattr(args, "highlight_soft_weighting", False),
                                 gamma=getattr(args, "highlight_gamma", 2.0),
                                 background_threshold=getattr(args, "foreground_background_threshold", 0.98),
@@ -1820,7 +1928,7 @@ def main(args):
                             step,
                         )
 
-                loss = diffusion_loss + getattr(args, "image_space_constraint_weight", 0.1) * image_space_loss
+                loss = diffusion_loss + effective_image_space_constraint_weight * image_space_loss
 
                 if not tensor_is_finite(model_pred):
                     skipped_update = True
@@ -1852,6 +1960,20 @@ def main(args):
                         {
                             "loss_diffusion": accelerator.reduce(diffusion_loss.detach(), reduction="mean").item(),
                             "loss_image_space_constraint": accelerator.reduce(image_space_loss.detach(), reduction="mean").item(),
+                            "loss_image_space_constraint_weighted": accelerator.reduce(
+                                (effective_image_space_constraint_weight * image_space_loss).detach(),
+                                reduction="mean",
+                            ).item(),
+                            "image_space/effective_constraint_weight": effective_image_space_constraint_weight,
+                            "highlight/effective_loss_weight": effective_highlight_loss_weight,
+                            "image_space/constraint_warmup_scale": linear_warmup_scale(
+                                global_step,
+                                getattr(args, "image_space_constraint_warmup_steps", 0),
+                            ),
+                            "highlight/loss_weight_warmup_scale": linear_warmup_scale(
+                                global_step,
+                                getattr(args, "highlight_loss_weight_warmup_steps", 0),
+                            ),
                             "train_guard/image_space_aux_skipped": int(image_space_aux_skipped),
                         }
                     )
@@ -1889,14 +2011,17 @@ def main(args):
                 else:
                     accelerator.backward(loss)
 
-                    if accelerator.sync_gradients and args.max_grad_norm is not None and args.max_grad_norm > 0:
-                        accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    if accelerator.sync_gradients:
+                        accelerator.unscale_gradients(optimizer=optimizer)
 
                     if model_has_non_finite_gradients(unet.parameters()):
                         skipped_update = True
                         skip_reason = "non_finite_gradients"
                         optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                        reset_amp_scaler_after_skipped_step(accelerator)
                     else:
+                        if accelerator.sync_gradients and args.max_grad_norm is not None and args.max_grad_norm > 0:
+                            torch.nn.utils.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
                         optimizer.step()
                         lr_scheduler.step()
                         optimizer.zero_grad(set_to_none=args.set_grads_to_none)

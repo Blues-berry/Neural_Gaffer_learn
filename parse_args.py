@@ -297,6 +297,18 @@ def parse_args(input_args=None):
         help="Extra spatial weight applied to highlight regions for highlight-aware losses."
     )
     parser.add_argument(
+        "--image_space_constraint_warmup_steps",
+        type=int,
+        default=0,
+        help="Linearly warm up the image-space highlight constraint weight from 0 to its target value during the first N optimization steps.",
+    )
+    parser.add_argument(
+        "--highlight_loss_weight_warmup_steps",
+        type=int,
+        default=0,
+        help="Linearly warm up the highlight extra-weight from 0 to its target value during the first N optimization steps.",
+    )
+    parser.add_argument(
         "--highlight_threshold",
         type=float,
         default=0.8,
@@ -468,6 +480,18 @@ def parse_args(input_args=None):
             "Optional short note appended to the auto-generated wandb run name, for example ablation, threshold_tune,"
             " or better_mask_vis."
         ),
+    )
+    parser.add_argument(
+        "--wandb_resume_id",
+        type=str,
+        default=None,
+        help="Optional wandb run id to resume into so metrics continue in the same run.",
+    )
+    parser.add_argument(
+        "--wandb_resume_mode",
+        type=str,
+        default=None,
+        help="Optional wandb resume mode such as allow, must, auto, or never.",
     )
 
     parser.add_argument(
