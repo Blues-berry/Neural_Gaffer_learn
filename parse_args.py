@@ -119,6 +119,18 @@ def parse_args(input_args=None):
         default=None,
         help=("Max number of checkpoints to store."),
     )
+    parser.add_argument(
+        "--best_checkpoint_until_step",
+        type=int,
+        default=72000,
+        help="Continuously refresh a dedicated best-validation checkpoint only up to this optimization step.",
+    )
+    parser.add_argument(
+        "--non_finite_early_stop_patience",
+        type=int,
+        default=3,
+        help="Stop training after this many skipped non-finite optimization steps.",
+    )
 
     parser.add_argument(
         "--logging_dir",
@@ -307,10 +319,40 @@ def parse_args(input_args=None):
         help="Use a soft highlight score instead of a binary threshold mask."
     )
     parser.add_argument(
+        "--highlight_use_quantile_threshold",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=False,
+        help="Adapt the highlight threshold per image from foreground luminance quantiles instead of using only a fixed threshold.",
+    )
+    parser.add_argument(
+        "--highlight_quantile",
+        type=float,
+        default=0.95,
+        help="Foreground luminance quantile used to derive the adaptive highlight threshold when quantile thresholding is enabled.",
+    )
+    parser.add_argument(
+        "--highlight_min_threshold",
+        type=float,
+        default=0.6,
+        help="Lower clamp for the adaptive highlight threshold to avoid overly broad highlight regions.",
+    )
+    parser.add_argument(
+        "--highlight_max_threshold",
+        type=float,
+        default=0.95,
+        help="Upper clamp for the adaptive highlight threshold so area-light highlights remain sufficiently wide.",
+    )
+    parser.add_argument(
         "--foreground_background_threshold",
         type=float,
         default=0.98,
         help="Pixels with all RGB channels close to 1 above this threshold are treated as white background and excluded from highlight-related masks and losses.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_prob",
+        type=float,
+        default=0.1,
+        help="Probability of replacing the training condition image with the random area-light rendering.",
     )
 
     parser.add_argument(
@@ -370,6 +412,24 @@ def parse_args(input_args=None):
         type=int,
         default=-1,
         help="Run initial validation at this step (set to -1 to disable).",
+    )
+    parser.add_argument(
+        "--early_stop_on_validation_collapse",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=True,
+        help="Whether to stop training if validation collapses after the best-checkpoint window.",
+    )
+    parser.add_argument(
+        "--collapse_psnr_threshold",
+        type=float,
+        default=5.0,
+        help="Absolute mean held-out PSNR threshold used to detect catastrophic post-window collapse.",
+    )
+    parser.add_argument(
+        "--collapse_relative_psnr_ratio",
+        type=float,
+        default=0.25,
+        help="Relative mean-PSNR threshold versus the best pre-window checkpoint used for collapse detection.",
     )
 
     parser.add_argument(

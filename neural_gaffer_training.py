@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import os
@@ -61,6 +62,167 @@ os.environ['WANDB_CONFIG_DIR'] = "/tmp/.config-" + os.environ['USER']
 
 logger = get_logger(__name__)
 # from parse_args import parse_args
+
+
+BEST_PRE72K_PSNR_KEYS = (
+    "PSNR/unseen_object_with_random_area_light_condition",
+    "PSNR/unseen_object_with_unseen_envir",
+    "PSNR/unseen_object_with_seen_envir",
+)
+
+COLLAPSE_PRED_MEAN_KEYS = (
+    "panel_brightness/unseen_object_with_random_area_light_condition/pred_0/mean",
+    "panel_brightness/unseen_object_with_unseen_envir/pred_0/mean",
+    "panel_brightness/unseen_object_with_seen_envir/pred_0/mean",
+)
+
+
+def tensor_is_finite(tensor: torch.Tensor) -> bool:
+    return bool(torch.isfinite(tensor).all().item())
+
+
+def model_has_non_finite_gradients(parameters) -> bool:
+    for parameter in parameters:
+        if parameter.grad is None:
+            continue
+        if not tensor_is_finite(parameter.grad):
+            return True
+    return False
+
+
+def sanitize_log_dict(logs: dict) -> tuple[dict, dict]:
+    sanitized = {}
+    skipped = {}
+    for key, value in logs.items():
+        if isinstance(value, torch.Tensor):
+            if value.numel() != 1:
+                skipped[key] = "non_scalar_tensor"
+                continue
+            value = value.detach().item()
+        elif isinstance(value, np.ndarray):
+            if value.size != 1:
+                skipped[key] = "non_scalar_array"
+                continue
+            value = value.item()
+        elif isinstance(value, np.generic):
+            value = value.item()
+
+        if isinstance(value, float) and not math.isfinite(value):
+            skipped[key] = value
+            continue
+
+        sanitized[key] = value
+
+    return sanitized, skipped
+
+
+def extract_validation_psnr_score(step_log: dict) -> tuple[float | None, list[str]]:
+    values = []
+    metric_keys = []
+    saw_non_finite_value = False
+    for metric_key in BEST_PRE72K_PSNR_KEYS:
+        metric_value = step_log.get(metric_key)
+        if isinstance(metric_value, (int, float)):
+            metric_keys.append(metric_key)
+            if math.isfinite(float(metric_value)):
+                values.append(float(metric_value))
+            else:
+                saw_non_finite_value = True
+
+    if not values:
+        for metric_key, metric_value in step_log.items():
+            if not metric_key.startswith("PSNR/") or metric_key == "PSNR/train":
+                continue
+            if isinstance(metric_value, (int, float)):
+                metric_keys.append(metric_key)
+                if math.isfinite(float(metric_value)):
+                    values.append(float(metric_value))
+                else:
+                    saw_non_finite_value = True
+
+    if saw_non_finite_value and not values:
+        return float("nan"), metric_keys
+
+    if not values:
+        return None, []
+
+    return float(sum(values) / len(values)), metric_keys
+
+
+def extract_validation_pred_mean(step_log: dict) -> float | None:
+    pred_means = []
+    for metric_key in COLLAPSE_PRED_MEAN_KEYS:
+        metric_value = step_log.get(metric_key)
+        if isinstance(metric_value, (int, float)) and math.isfinite(float(metric_value)):
+            pred_means.append(float(metric_value))
+
+    if not pred_means:
+        return None
+
+    return float(min(pred_means))
+
+
+def load_best_pre72k_metadata(output_dir: str) -> dict | None:
+    metadata_path = os.path.join(output_dir, "best_pre72k_metric.json")
+    if not os.path.exists(metadata_path):
+        return None
+
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        logger.warning("Failed to load best pre-72k metadata from %s: %s", metadata_path, exc)
+        return None
+
+
+def save_best_pre72k_metadata(
+    output_dir: str,
+    step: int,
+    score: float,
+    metric_keys: list[str],
+    checkpoint_path: str,
+):
+    metadata_path = os.path.join(output_dir, "best_pre72k_metric.json")
+    payload = {
+        "step": step,
+        "score": score,
+        "metric_keys": metric_keys,
+        "checkpoint_path": checkpoint_path,
+        "updated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+def save_best_pre72k_checkpoint(
+    accelerator: Accelerator,
+    args,
+    global_step: int,
+    score: float,
+    metric_keys: list[str],
+) -> str:
+    checkpoint_prefix = "best-pre72k-step-"
+    for entry in os.listdir(args.output_dir):
+        if not entry.startswith(checkpoint_prefix):
+            continue
+        shutil.rmtree(os.path.join(args.output_dir, entry), ignore_errors=True)
+
+    checkpoint_path = os.path.join(args.output_dir, f"{checkpoint_prefix}{global_step}")
+    accelerator.save_state(checkpoint_path)
+    save_best_pre72k_metadata(
+        output_dir=args.output_dir,
+        step=global_step,
+        score=score,
+        metric_keys=metric_keys,
+        checkpoint_path=checkpoint_path,
+    )
+    logger.info(
+        "Updated best pre-72k checkpoint at step %s with validation score %.4f -> %s",
+        global_step,
+        score,
+        checkpoint_path,
+    )
+    return checkpoint_path
 
 
 def image_grid(imgs, rows, cols):
@@ -347,7 +509,8 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
     
     ## PSNR
-    mse = np.mean((gt_images - predicted_images) ** 2, axis=(1, 2, 3)) 
+    mse = np.mean((gt_images - predicted_images) ** 2, axis=(1, 2, 3))
+    mse = np.clip(mse, 1e-8, None)
     PSNR = 10 * np.log10(1.0 / mse)
     # print("PSNR: ", PSNR)
     mean_psnr = np.mean(PSNR)
@@ -371,6 +534,10 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         latent_hw=gt_images_tensor.shape[-2:],
         threshold=getattr(args, "highlight_threshold", 0.8),
         background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+        use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+        highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+        min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+        max_threshold=getattr(args, "highlight_max_threshold", 0.95),
     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
     image_foreground_mask = compute_foreground_mask(
         gt_image=gt_images_tensor * 2 - 1,
@@ -520,6 +687,114 @@ def compute_foreground_mask(
     return foreground_mask
 
 
+def resolve_highlight_threshold_map(
+    luminance: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    threshold: float = 0.8,
+    use_quantile_threshold: bool = False,
+    highlight_quantile: float = 0.95,
+    min_threshold: float = 0.6,
+    max_threshold: float = 0.95,
+):
+    """
+    为每张图像生成高光阈值。
+
+    默认使用固定阈值；开启 quantile 模式后，会在前景像素内部取亮度分位数，
+    并在 [min_threshold, max_threshold] 区间内做裁剪。
+    """
+    base_threshold = float(np.clip(threshold, 0.0, 0.999))
+    threshold_map = torch.full(
+        (luminance.shape[0], 1, 1, 1),
+        base_threshold,
+        device=luminance.device,
+        dtype=luminance.dtype,
+    )
+
+    if not use_quantile_threshold:
+        return threshold_map
+
+    quantile = float(np.clip(highlight_quantile, 0.0, 1.0))
+    min_threshold = float(np.clip(min_threshold, 0.0, 0.999))
+    max_threshold = float(np.clip(max_threshold, min_threshold, 0.999))
+
+    flat_luminance = luminance.reshape(luminance.shape[0], -1)
+    flat_foreground = foreground_mask.reshape(foreground_mask.shape[0], -1) > 0.5
+
+    for batch_idx in range(luminance.shape[0]):
+        foreground_values = flat_luminance[batch_idx][flat_foreground[batch_idx]]
+        if foreground_values.numel() == 0:
+            continue
+        quantile_threshold = torch.quantile(foreground_values, quantile)
+        quantile_threshold = quantile_threshold.clamp(min=min_threshold, max=max_threshold)
+        threshold_map[batch_idx] = quantile_threshold.to(dtype=luminance.dtype)
+
+    return threshold_map
+
+
+def compute_highlight_score_map(
+    gt_image: torch.Tensor,
+    latent_hw: tuple[int, int],
+    threshold: float = 0.8,
+    soft_weighting: bool = False,
+    gamma: float = 2.0,
+    background_threshold: float = 0.98,
+    use_quantile_threshold: bool = False,
+    highlight_quantile: float = 0.95,
+    min_threshold: float = 0.6,
+    max_threshold: float = 0.95,
+):
+    """
+    生成高光软分数图和二值 mask。
+
+    - score_map: 更适合 area-light 的连续权重
+    - mask_map: 用于指标统计的高光区域二值图
+    """
+    gt_img_01 = (gt_image.float() + 1.0) / 2.0
+    luminance = (
+        0.299 * gt_img_01[:, 0:1]
+        + 0.587 * gt_img_01[:, 1:2]
+        + 0.114 * gt_img_01[:, 2:3]
+    )
+
+    fullres_foreground_mask = compute_foreground_mask(
+        gt_image=gt_image,
+        latent_hw=luminance.shape[-2:],
+        background_threshold=background_threshold,
+    ).to(device=luminance.device, dtype=luminance.dtype)
+    threshold_map = resolve_highlight_threshold_map(
+        luminance=luminance,
+        foreground_mask=fullres_foreground_mask,
+        threshold=threshold,
+        use_quantile_threshold=use_quantile_threshold,
+        highlight_quantile=highlight_quantile,
+        min_threshold=min_threshold,
+        max_threshold=max_threshold,
+    )
+
+    normalized_excess = (luminance - threshold_map).clamp(min=0.0) / (1.0 - threshold_map).clamp_min(1e-6)
+    soft_score = normalized_excess.pow(max(float(gamma), 1e-6))
+    mask_map = (luminance >= threshold_map).float()
+    score_map = soft_score if soft_weighting else mask_map
+
+    score_map = score_map * fullres_foreground_mask
+    mask_map = mask_map * fullres_foreground_mask
+
+    if score_map.shape[-2:] != latent_hw:
+        score_map = F.interpolate(score_map, size=latent_hw, mode="bilinear", align_corners=False)
+    if mask_map.shape[-2:] != latent_hw:
+        mask_map = F.interpolate(mask_map, size=latent_hw, mode="nearest")
+
+    foreground_mask = compute_foreground_mask(
+        gt_image=gt_image,
+        latent_hw=latent_hw,
+        background_threshold=background_threshold,
+    ).to(device=score_map.device, dtype=score_map.dtype)
+    score_map = score_map * foreground_mask
+    mask_map = mask_map * foreground_mask
+
+    return score_map, mask_map, foreground_mask
+
+
 def compute_highlight_weight_map(
     gt_image: torch.Tensor,
     latent_hw: tuple[int, int],
@@ -528,6 +803,10 @@ def compute_highlight_weight_map(
     soft_weighting: bool = False,
     gamma: float = 2.0,
     background_threshold: float = 0.98,
+    use_quantile_threshold: bool = False,
+    highlight_quantile: float = 0.95,
+    min_threshold: float = 0.6,
+    max_threshold: float = 0.95,
 ):
     """
     根据真实目标图像生成“高光区域权重图”，并缩放到 latent / noise loss 的分辨率。
@@ -549,37 +828,18 @@ def compute_highlight_weight_map(
     - 我们不再把 latent 强行 decode 成图像做“伪物理约束”
     - 而是直接在原始 loss 上，对高光区域提高权重，保持训练目标正确
     """
-    gt_img_01 = (gt_image.float() + 1.0) / 2.0
-    luminance = (
-        0.299 * gt_img_01[:, 0:1]
-        + 0.587 * gt_img_01[:, 1:2]
-        + 0.114 * gt_img_01[:, 2:3]
-    )
-
-    foreground_mask = compute_foreground_mask(
-        gt_image=gt_image,
-        latent_hw=luminance.shape[-2:],
-        background_threshold=background_threshold,
-    )
-
-    if soft_weighting:
-        highlight_score = ((luminance - threshold).clamp(min=0.0) / max(1e-6, 1.0 - threshold)) ** gamma
-    else:
-        highlight_score = (luminance > threshold).float()
-
-    highlight_score = highlight_score * foreground_mask
-
-    highlight_score = F.interpolate(
-        highlight_score,
-        size=latent_hw,
-        mode="bilinear",
-        align_corners=False,
-    )
-    foreground_mask = compute_foreground_mask(
+    highlight_score, _, foreground_mask = compute_highlight_score_map(
         gt_image=gt_image,
         latent_hw=latent_hw,
+        threshold=threshold,
+        soft_weighting=soft_weighting,
+        gamma=gamma,
         background_threshold=background_threshold,
-    ).to(device=highlight_score.device, dtype=highlight_score.dtype)
+        use_quantile_threshold=use_quantile_threshold,
+        highlight_quantile=highlight_quantile,
+        min_threshold=min_threshold,
+        max_threshold=max_threshold,
+    )
     return foreground_mask * (1.0 + extra_weight * highlight_score)
 
 
@@ -625,24 +885,24 @@ def compute_highlight_mask(
     latent_hw: tuple[int, int],
     threshold: float = 0.8,
     background_threshold: float = 0.98,
+    use_quantile_threshold: bool = False,
+    highlight_quantile: float = 0.95,
+    min_threshold: float = 0.6,
+    max_threshold: float = 0.95,
 ):
     """
     生成与 latent loss 分辨率对齐的二值高光区域 mask。
     """
-    gt_img_01 = (gt_image.float() + 1.0) / 2.0
-    luminance = (
-        0.299 * gt_img_01[:, 0:1]
-        + 0.587 * gt_img_01[:, 1:2]
-        + 0.114 * gt_img_01[:, 2:3]
-    )
-    foreground_mask = compute_foreground_mask(
+    _, highlight_mask, _ = compute_highlight_score_map(
         gt_image=gt_image,
-        latent_hw=luminance.shape[-2:],
+        latent_hw=latent_hw,
+        threshold=threshold,
         background_threshold=background_threshold,
+        use_quantile_threshold=use_quantile_threshold,
+        highlight_quantile=highlight_quantile,
+        min_threshold=min_threshold,
+        max_threshold=max_threshold,
     )
-    highlight_mask = (luminance > threshold).float() * foreground_mask
-    if highlight_mask.shape[-2:] != latent_hw:
-        highlight_mask = F.interpolate(highlight_mask, size=latent_hw, mode="nearest")
     return highlight_mask
 
 
@@ -700,6 +960,10 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         latent_hw=luminance.shape[-2:],
         threshold=getattr(args, "highlight_threshold", 0.8),
         background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+        use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+        highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+        min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+        max_threshold=getattr(args, "highlight_max_threshold", 0.95),
     )
     weight_map = compute_highlight_weight_map(
         gt_image=gt_image,
@@ -709,6 +973,10 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         soft_weighting=getattr(args, "highlight_soft_weighting", False),
         gamma=getattr(args, "highlight_gamma", 2.0),
         background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+        use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+        highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+        min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+        max_threshold=getattr(args, "highlight_max_threshold", 0.95),
     )
     weight_norm = ((weight_map - 1.0) / max(1e-6, getattr(args, "highlight_loss_weight", 1.0))).clamp(0.0, 1.0)
 
@@ -730,7 +998,7 @@ def resolve_wandb_project_name(args) -> str:
     优先沿用本地最近一次 wandb run 的项目名，找不到时回退到配置值。
     """
     fallback_project = getattr(args, "tracker_project_name", "train_neural_gaffer_private")
-    workspace_root = Path(__file__).resolve().parent.parent
+    workspace_root = Path(__file__).resolve().parent
     debug_log_path = workspace_root / "wandb" / "latest-run" / "logs" / "debug.log"
 
     try:
@@ -755,41 +1023,64 @@ def _sanitize_wandb_name_part(value: str) -> str:
     return value
 
 
+def _format_run_float_token(value: float, scale: int = 100) -> str:
+    scaled = int(round(float(value) * scale))
+    return str(scaled)
+
+
+def _next_wandb_daily_index(now_utc: datetime.datetime) -> int:
+    wandb_root = Path(__file__).resolve().parent / "wandb"
+    date_prefix = now_utc.strftime("run-%Y%m%d_")
+    match_count = 0
+
+    if not wandb_root.exists():
+        return 1
+
+    for run_dir in wandb_root.iterdir():
+        if run_dir.is_dir() and run_dir.name.startswith(date_prefix):
+            match_count += 1
+
+    return match_count + 1
+
+
 def build_wandb_run_name(args) -> str:
     """
     自动生成当前实验的 wandb run 名称。
 
     命名策略:
-    - 先保留 output_dir 的语义
-    - 再写入当前启用的关键训练改动
-    - 最后追加 UTC 时间戳
-    - 如果用户提供 wandb_run_note，则把备注一并附上
+    - 只保留必要的实验参数，不再带 output_dir 前缀
+    - 日期部分使用 MMDD-当日第几次 的短格式
     """
     if getattr(args, "wandb_run_name", None):
         return args.wandb_run_name
 
-    output_basename = os.path.basename(args.output_dir.rstrip("/")) or "neural_gaffer"
-    parts = [output_basename]
-
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    parts = []
     use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
     use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", False)
+    random_lighting_condition_prob = getattr(args, "random_lighting_condition_prob", 0.1)
 
     if use_highlight_weighted_loss:
-        parts.append("latent_hl_soft" if getattr(args, "highlight_soft_weighting", False) else "latent_hl_hard")
+        parts.append("latentsoft" if getattr(args, "highlight_soft_weighting", False) else "latenthard")
     if use_image_space_highlight_loss:
-        parts.append("img_hl_soft" if getattr(args, "highlight_soft_weighting", False) else "img_hl_hard")
+        parts.append("imgsoft" if getattr(args, "highlight_soft_weighting", False) else "imghard")
     if not use_highlight_weighted_loss and not use_image_space_highlight_loss:
-        parts.append("plain_diffusion")
+        parts.append("plain")
 
     threshold = getattr(args, "highlight_threshold", None)
     extra_weight = getattr(args, "highlight_loss_weight", None)
     gamma = getattr(args, "highlight_gamma", None)
-    if threshold is not None:
-        parts.append(f"t{threshold:g}")
+    if getattr(args, "highlight_use_quantile_threshold", False):
+        parts.append(f"q{_format_run_float_token(getattr(args, 'highlight_quantile', 0.95), scale=100)}")
+    elif threshold is not None:
+        parts.append(f"t{_format_run_float_token(threshold, scale=100)}")
+    parts.append(f"r{_format_run_float_token(random_lighting_condition_prob, scale=100)}")
     if extra_weight is not None and (use_highlight_weighted_loss or use_image_space_highlight_loss):
         parts.append(f"w{extra_weight:g}")
     if gamma is not None and getattr(args, "highlight_soft_weighting", False):
         parts.append(f"g{gamma:g}")
+    if getattr(args, "max_train_steps", None):
+        parts.append(f"{int(args.max_train_steps / 1000)}k")
 
     note = getattr(args, "wandb_run_note", None)
     if note:
@@ -797,7 +1088,8 @@ def build_wandb_run_name(args) -> str:
         if sanitized_note:
             parts.append(sanitized_note)
 
-    parts.append(datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%SZ"))
+    parts.append(now_utc.strftime("%m%d"))
+    parts.append(f"{_next_wandb_daily_index(now_utc):02d}")
     return "-".join(_sanitize_wandb_name_part(part) for part in parts if part)
 
 def _encode_image(image_encoder, image, device, dtype, do_classifier_free_guidance):
@@ -969,26 +1261,49 @@ def main(args):
     use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", True)
     if use_highlight_weighted_loss:
         logger.info(
-            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s threshold=%s soft=%s gamma=%s",
+            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
             getattr(args, "highlight_loss_weight", 1.0),
             getattr(args, "highlight_threshold", 0.8),
             getattr(args, "highlight_soft_weighting", False),
             getattr(args, "highlight_gamma", 2.0),
+            getattr(args, "highlight_use_quantile_threshold", False),
+            getattr(args, "highlight_quantile", 0.95),
+            getattr(args, "highlight_min_threshold", 0.6),
+            getattr(args, "highlight_max_threshold", 0.95),
         )
     else:
         logger.info("Latent/noise-space highlight-weighted diffusion loss disabled")
 
     if use_image_space_highlight_loss:
         logger.info(
-            "Image-space highlight constraint enabled with constraint_weight=%s highlight_weight=%s threshold=%s soft=%s gamma=%s",
+            "Image-space highlight constraint enabled with constraint_weight=%s highlight_weight=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
             getattr(args, "image_space_constraint_weight", 0.1),
             getattr(args, "highlight_loss_weight", 1.0),
             getattr(args, "highlight_threshold", 0.8),
             getattr(args, "highlight_soft_weighting", False),
             getattr(args, "highlight_gamma", 2.0),
+            getattr(args, "highlight_use_quantile_threshold", False),
+            getattr(args, "highlight_quantile", 0.95),
+            getattr(args, "highlight_min_threshold", 0.6),
+            getattr(args, "highlight_max_threshold", 0.95),
         )
     else:
         logger.info("Image-space highlight constraint disabled")
+    logger.info(
+        "Training random area-light condition probability=%s",
+        getattr(args, "random_lighting_condition_prob", 0.1),
+    )
+    logger.info(
+        "Best pre-window checkpoint tracking enabled until step=%s using held-out mean PSNR",
+        getattr(args, "best_checkpoint_until_step", 72000),
+    )
+    logger.info(
+        "Training guards: non_finite_patience=%s collapse_enabled=%s collapse_psnr_threshold=%s collapse_relative_ratio=%s",
+        getattr(args, "non_finite_early_stop_patience", 3),
+        getattr(args, "early_stop_on_validation_collapse", True),
+        getattr(args, "collapse_psnr_threshold", 5.0),
+        getattr(args, "collapse_relative_psnr_ratio", 0.25),
+    )
     
     # print model info, learnable parameters, non-learnable parameters, total parameters, model size, all in billion
     def print_model_info(model):
@@ -1026,7 +1341,8 @@ def main(args):
         validation=False,
         relighting_only=True,
         image_preprocessed = True,
-        dataset_type='training_object_with_seen_envir'
+        dataset_type='training_object_with_seen_envir',
+        random_lighting_condition_prob=args.random_lighting_condition_prob,
         )
     
     # validate seen training object with unseen lighting, and the input images of are rendered with unseen lighting under unseen camera poses
@@ -1246,6 +1562,31 @@ def main(args):
     else:
         initial_global_step = 0
 
+    best_pre72k_metadata = load_best_pre72k_metadata(args.output_dir) if args.output_dir else None
+    best_pre72k_score = float("-inf")
+    best_pre72k_step = None
+    best_pre72k_path = None
+    if best_pre72k_metadata is not None:
+        metadata_score = best_pre72k_metadata.get("score")
+        metadata_step = best_pre72k_metadata.get("step")
+        metadata_path = best_pre72k_metadata.get("checkpoint_path")
+        if isinstance(metadata_score, (int, float)) and math.isfinite(float(metadata_score)):
+            best_pre72k_score = float(metadata_score)
+        if isinstance(metadata_step, int):
+            best_pre72k_step = metadata_step
+        if isinstance(metadata_path, str) and metadata_path:
+            best_pre72k_path = metadata_path
+        logger.info(
+            "Loaded existing best pre-window checkpoint metadata: step=%s score=%s path=%s",
+            best_pre72k_step,
+            best_pre72k_score if math.isfinite(best_pre72k_score) else None,
+            best_pre72k_path,
+        )
+
+    non_finite_step_streak = 0
+    early_stop_triggered = False
+    early_stop_reason = None
+
     progress_bar = tqdm(
         range(0, args.max_train_steps),
         initial=initial_global_step,
@@ -1259,6 +1600,10 @@ def main(args):
         loss_epoch = 0.0
         num_train_elems = 0
         for step, batch in enumerate(train_dataloader):
+            skipped_update = False
+            skip_reason = None
+            train_loss_scalar = None
+            image_space_aux_skipped = False
             
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -1356,6 +1701,10 @@ def main(args):
                     latent_hw=diffusion_per_pixel_loss.shape[-2:],
                     threshold=getattr(args, "highlight_threshold", 0.8),
                     background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                    use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+                    highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+                    min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+                    max_threshold=getattr(args, "highlight_max_threshold", 0.95),
                 ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                 latent_foreground_mask = compute_foreground_mask(
                     gt_image=gt_image,
@@ -1370,6 +1719,7 @@ def main(args):
                 logging_steps = max(1, getattr(args, "logging_steps", 50))
                 should_log_highlight_metrics = global_step % logging_steps == 0
 
+                weight_map = None
                 if use_highlight_weighted_loss:
                     # 根据真实目标图生成一个与 latent 分辨率一致的空间权重图。
                     # 这样模型在学习噪声时，会对高光区域承担更大的误差惩罚。
@@ -1381,6 +1731,10 @@ def main(args):
                         soft_weighting=getattr(args, "highlight_soft_weighting", False),
                         gamma=getattr(args, "highlight_gamma", 2.0),
                         background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                        use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+                        highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+                        min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+                        max_threshold=getattr(args, "highlight_max_threshold", 0.95),
                     ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                     # weighted_loss: 每个位置的 loss 乘以空间权重
                     weighted_loss = diffusion_per_pixel_loss * weight_map
@@ -1392,6 +1746,7 @@ def main(args):
                     diffusion_loss = diffusion_per_pixel_loss.mean()
 
                 image_space_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
+                image_weight_map = None
                 active_highlight_metric_tensors = latent_highlight_metric_tensors
                 highlight_logs_prefix = ""
 
@@ -1402,44 +1757,83 @@ def main(args):
                         noisy_latents.float(),
                         timesteps,
                     )
-                    pred_x0_image = decode_latents_to_image(
-                        vae,
-                        pred_x0_latents,
-                        output_dtype=gt_image.dtype,
-                    )
-                    image_per_pixel_loss = F.mse_loss(pred_x0_image.float(), gt_image.float(), reduction="none")
-                    image_weight_map = compute_highlight_weight_map(
-                        gt_image=gt_image,
-                        latent_hw=image_per_pixel_loss.shape[-2:],
-                        threshold=getattr(args, "highlight_threshold", 0.8),
-                        extra_weight=getattr(args, "highlight_loss_weight", 1.0),
-                        soft_weighting=getattr(args, "highlight_soft_weighting", False),
-                        gamma=getattr(args, "highlight_gamma", 2.0),
-                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
-                    image_weighted_loss = image_per_pixel_loss * image_weight_map
-                    image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
-                    image_space_loss = image_weighted_loss.sum() / image_norm.clamp_min(1e-6)
+                    if tensor_is_finite(pred_x0_latents):
+                        pred_x0_image = decode_latents_to_image(
+                            vae,
+                            pred_x0_latents,
+                            output_dtype=gt_image.dtype,
+                        )
+                        if tensor_is_finite(pred_x0_image):
+                            image_per_pixel_loss = F.mse_loss(pred_x0_image.float(), gt_image.float(), reduction="none")
+                            image_weight_map = compute_highlight_weight_map(
+                                gt_image=gt_image,
+                                latent_hw=image_per_pixel_loss.shape[-2:],
+                                threshold=getattr(args, "highlight_threshold", 0.8),
+                                extra_weight=getattr(args, "highlight_loss_weight", 1.0),
+                                soft_weighting=getattr(args, "highlight_soft_weighting", False),
+                                gamma=getattr(args, "highlight_gamma", 2.0),
+                                background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                                use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+                                highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+                                min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+                                max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+                            ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+                            image_weighted_loss = image_per_pixel_loss * image_weight_map
+                            image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
+                            image_space_loss = image_weighted_loss.sum() / image_norm.clamp_min(1e-6)
 
-                    image_highlight_mask = compute_highlight_mask(
-                        gt_image=gt_image,
-                        latent_hw=image_per_pixel_loss.shape[-2:],
-                        threshold=getattr(args, "highlight_threshold", 0.8),
-                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
-                    image_foreground_mask = compute_foreground_mask(
-                        gt_image=gt_image,
-                        latent_hw=image_per_pixel_loss.shape[-2:],
-                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                    ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
-                    active_highlight_metric_tensors = summarize_highlight_loss_metrics(
-                        image_per_pixel_loss,
-                        image_highlight_mask,
-                        valid_mask=image_foreground_mask,
-                    )
-                    highlight_logs_prefix = "image_space/"
+                            image_highlight_mask = compute_highlight_mask(
+                                gt_image=gt_image,
+                                latent_hw=image_per_pixel_loss.shape[-2:],
+                                threshold=getattr(args, "highlight_threshold", 0.8),
+                                background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                                use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+                                highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+                                min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+                                max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+                            ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+                            image_foreground_mask = compute_foreground_mask(
+                                gt_image=gt_image,
+                                latent_hw=image_per_pixel_loss.shape[-2:],
+                                background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                            ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+                            active_highlight_metric_tensors = summarize_highlight_loss_metrics(
+                                image_per_pixel_loss,
+                                image_highlight_mask,
+                                valid_mask=image_foreground_mask,
+                            )
+                            highlight_logs_prefix = "image_space/"
+                        else:
+                            image_space_aux_skipped = True
+                            logger.warning(
+                                "Skipping image-space auxiliary loss at global_step=%s epoch=%s batch_step=%s because decoded pred_x0 image is non-finite.",
+                                global_step,
+                                epoch,
+                                step,
+                            )
+                    else:
+                        image_space_aux_skipped = True
+                        logger.warning(
+                            "Skipping image-space auxiliary loss at global_step=%s epoch=%s batch_step=%s because pred_x0 latents are non-finite.",
+                            global_step,
+                            epoch,
+                            step,
+                        )
 
                 loss = diffusion_loss + getattr(args, "image_space_constraint_weight", 0.1) * image_space_loss
+
+                if not tensor_is_finite(model_pred):
+                    skipped_update = True
+                    skip_reason = "non_finite_model_pred"
+                elif not tensor_is_finite(diffusion_loss):
+                    skipped_update = True
+                    skip_reason = "non_finite_diffusion_loss"
+                elif not tensor_is_finite(image_space_loss):
+                    skipped_update = True
+                    skip_reason = "non_finite_image_space_loss"
+                elif not tensor_is_finite(loss):
+                    skipped_update = True
+                    skip_reason = "non_finite_total_loss"
 
                 if should_log_highlight_metrics:
                     reduced_highlight_metrics = {
@@ -1458,9 +1852,10 @@ def main(args):
                         {
                             "loss_diffusion": accelerator.reduce(diffusion_loss.detach(), reduction="mean").item(),
                             "loss_image_space_constraint": accelerator.reduce(image_space_loss.detach(), reduction="mean").item(),
+                            "train_guard/image_space_aux_skipped": int(image_space_aux_skipped),
                         }
                     )
-                    if use_highlight_weighted_loss:
+                    if use_highlight_weighted_loss and weight_map is not None:
                         highlight_logs = {
                             **highlight_logs,
                             "highlight_weight/mean": accelerator.reduce(weight_map.mean().detach(), reduction="mean").item(),
@@ -1470,7 +1865,7 @@ def main(args):
                                 reduction="mean",
                             ).item(),
                         }
-                    if use_image_space_highlight_loss:
+                    if image_weight_map is not None:
                         highlight_logs = {
                             **highlight_logs,
                             "image_space/highlight_weight_mean": accelerator.reduce(
@@ -1478,19 +1873,73 @@ def main(args):
                                 reduction="mean",
                             ).item(),
                         }
-                    if accelerator.is_main_process:
-                        accelerator.log(highlight_logs, step=global_step)
+                    sanitized_highlight_logs, skipped_highlight_logs = sanitize_log_dict(highlight_logs)
+                    if skipped_highlight_logs:
+                        logger.warning(
+                            "Dropped %s non-finite highlight log entries at global_step=%s: %s",
+                            len(skipped_highlight_logs),
+                            global_step,
+                            ", ".join(sorted(skipped_highlight_logs.keys())),
+                        )
+                    if accelerator.is_main_process and sanitized_highlight_logs:
+                        accelerator.log(sanitized_highlight_logs, step=global_step)
 
-                accelerator.backward(loss)
+                if skipped_update:
+                    optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                else:
+                    accelerator.backward(loss)
 
-                optimizer.step()
+                    if accelerator.sync_gradients and args.max_grad_norm is not None and args.max_grad_norm > 0:
+                        accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
 
-                lr_scheduler.step()
-
-                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                    if model_has_non_finite_gradients(unet.parameters()):
+                        skipped_update = True
+                        skip_reason = "non_finite_gradients"
+                        optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                    else:
+                        optimizer.step()
+                        lr_scheduler.step()
+                        optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                        train_loss_scalar = float(loss.detach().item())
             
             # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
+            if skipped_update:
+                non_finite_step_streak += 1
+                logger.warning(
+                    "Skipped optimizer update at global_step=%s epoch=%s batch_step=%s because %s (streak=%s).",
+                    global_step,
+                    epoch,
+                    step,
+                    skip_reason,
+                    non_finite_step_streak,
+                )
+                guard_logs = {
+                    "train_guard/skipped_update": 1,
+                    "train_guard/non_finite_step_streak": non_finite_step_streak,
+                    "train_guard/image_space_aux_skipped_step": int(image_space_aux_skipped),
+                }
+                sanitized_guard_logs, skipped_guard_logs = sanitize_log_dict(guard_logs)
+                if skipped_guard_logs:
+                    logger.warning(
+                        "Dropped %s non-finite guard log entries at global_step=%s: %s",
+                        len(skipped_guard_logs),
+                        global_step,
+                        ", ".join(sorted(skipped_guard_logs.keys())),
+                    )
+                if sanitized_guard_logs:
+                    accelerator.log(sanitized_guard_logs, step=global_step)
+
+                if non_finite_step_streak >= getattr(args, "non_finite_early_stop_patience", 3):
+                    early_stop_triggered = True
+                    early_stop_reason = (
+                        f"Reached non-finite early-stop patience: {non_finite_step_streak} skipped updates "
+                        f"at global_step={global_step}."
+                    )
+                    logger.warning(early_stop_reason)
+            else:
+                non_finite_step_streak = 0
+
+            if accelerator.sync_gradients and not skipped_update:
                 if args.use_ema:
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
@@ -1498,6 +1947,7 @@ def main(args):
 
                 if accelerator.is_main_process:
                     step_log = {}
+                    checkpoint_saved_this_step = None
                     
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
@@ -1520,9 +1970,9 @@ def main(args):
                                     removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                        checkpoint_saved_this_step = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(checkpoint_saved_this_step)
+                        logger.info(f"Saved state to {checkpoint_saved_this_step}")
 
 
                     initial_val_step = getattr(args, 'initial_validation_step', -1)
@@ -1638,21 +2088,161 @@ def main(args):
                             # Switch back to the original UNet parameters.
                             ema_unet.restore(unet.parameters())
                         step_log.update(temp_log)
-                    accelerator.log(step_log, step=global_step)
-            loss_epoch += loss.detach().item()
-            num_train_elems += 1
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "loss_epoch": loss_epoch/num_train_elems,
-                    "epoch": epoch}
-            
-            progress_bar.set_postfix(**logs)
-            accelerator.log(logs, step=global_step)
 
-            if global_step >= args.max_train_steps:
+                    validation_score, validation_metric_keys = extract_validation_psnr_score(step_log)
+                    validation_pred_mean = extract_validation_pred_mean(step_log)
+                    if validation_score is not None:
+                        step_log["train_guard/heldout_mean_psnr"] = validation_score
+                    if validation_pred_mean is not None:
+                        step_log["train_guard/heldout_min_pred_mean"] = validation_pred_mean
+
+                    best_checkpoint_until_step = getattr(args, "best_checkpoint_until_step", 72000)
+                    if (
+                        validation_score is not None
+                        and global_step <= best_checkpoint_until_step
+                        and validation_score > best_pre72k_score
+                    ):
+                        best_pre72k_score = validation_score
+                        best_pre72k_step = global_step
+                        best_pre72k_path = save_best_pre72k_checkpoint(
+                            accelerator=accelerator,
+                            args=args,
+                            global_step=global_step,
+                            score=validation_score,
+                            metric_keys=validation_metric_keys,
+                        )
+
+                    if best_pre72k_step is not None and math.isfinite(best_pre72k_score):
+                        step_log["train_guard/best_pre72k_score"] = best_pre72k_score
+                        step_log["train_guard/best_pre72k_step"] = best_pre72k_step
+
+                    if (
+                        getattr(args, "early_stop_on_validation_collapse", True)
+                        and global_step > best_checkpoint_until_step
+                        and validation_score is not None
+                    ):
+                        collapse_threshold = getattr(args, "collapse_psnr_threshold", 5.0)
+                        if math.isfinite(best_pre72k_score):
+                            collapse_threshold = max(
+                                collapse_threshold,
+                                best_pre72k_score * getattr(args, "collapse_relative_psnr_ratio", 0.25),
+                            )
+                        collapse_detected = (not math.isfinite(validation_score)) or (validation_score < collapse_threshold)
+                        if validation_pred_mean is not None and validation_pred_mean <= 1e-4:
+                            collapse_detected = True
+
+                        if collapse_detected:
+                            early_stop_triggered = True
+                            early_stop_reason = (
+                                f"Validation collapse detected at step={global_step}: "
+                                f"heldout_mean_psnr={validation_score:.4f}, "
+                                f"heldout_min_pred_mean={validation_pred_mean}, "
+                                f"collapse_threshold={collapse_threshold:.4f}, "
+                                f"best_pre72k_step={best_pre72k_step}, best_pre72k_score={best_pre72k_score:.4f}."
+                            )
+                            logger.warning(early_stop_reason)
+                            step_log["train_guard/early_stop_triggered"] = 1
+
+                            if checkpoint_saved_this_step and os.path.isdir(checkpoint_saved_this_step):
+                                shutil.rmtree(checkpoint_saved_this_step, ignore_errors=True)
+                                logger.info(
+                                    "Removed checkpoint %s because validation had already collapsed at this step.",
+                                    checkpoint_saved_this_step,
+                                )
+
+                    sanitized_step_log, skipped_step_log = sanitize_log_dict(step_log)
+                    if skipped_step_log:
+                        logger.warning(
+                            "Dropped %s non-finite validation log entries at global_step=%s: %s",
+                            len(skipped_step_log),
+                            global_step,
+                            ", ".join(sorted(skipped_step_log.keys())),
+                        )
+                    if sanitized_step_log:
+                        accelerator.log(sanitized_step_log, step=global_step)
+
+            early_stop_flag = torch.tensor(
+                1.0 if early_stop_triggered else 0.0,
+                device=accelerator.device,
+            )
+            early_stop_triggered = bool(accelerator.reduce(early_stop_flag, reduction="sum").item() > 0)
+            if early_stop_triggered and early_stop_reason is None:
+                early_stop_reason = "Early stop triggered on another process."
+
+            if train_loss_scalar is not None:
+                loss_epoch += train_loss_scalar
+                num_train_elems += 1
+
+            loss_epoch_value = loss_epoch / num_train_elems if num_train_elems > 0 else None
+            log_payload = {
+                "lr": lr_scheduler.get_last_lr()[0],
+                "epoch": epoch,
+                "train_guard/non_finite_step_streak": non_finite_step_streak,
+                "train_guard/image_space_aux_skipped_step": int(image_space_aux_skipped),
+            }
+            if train_loss_scalar is not None:
+                log_payload["loss"] = train_loss_scalar
+            if loss_epoch_value is not None:
+                log_payload["loss_epoch"] = loss_epoch_value
+            if skipped_update:
+                log_payload["train_guard/skipped_update"] = 1
+
+            sanitized_logs, skipped_logs = sanitize_log_dict(log_payload)
+            if skipped_logs:
+                logger.warning(
+                    "Dropped %s non-finite step log entries at global_step=%s: %s",
+                    len(skipped_logs),
+                    global_step,
+                    ", ".join(sorted(skipped_logs.keys())),
+                )
+            if sanitized_logs:
+                accelerator.log(sanitized_logs, step=global_step)
+
+            progress_logs = {
+                "lr": lr_scheduler.get_last_lr()[0],
+                "epoch": epoch,
+            }
+            if train_loss_scalar is not None:
+                progress_logs["loss"] = train_loss_scalar
+            if loss_epoch_value is not None:
+                progress_logs["loss_epoch"] = loss_epoch_value
+            if skipped_update:
+                progress_logs["guard"] = "skip"
+
+            progress_bar.set_postfix(**progress_logs)
+
+            if early_stop_triggered or global_step >= args.max_train_steps:
                 break
+
+        if early_stop_triggered or global_step >= args.max_train_steps:
+            break
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        guard_status_path = os.path.join(args.output_dir, "training_guard_status.json")
+        with open(guard_status_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "early_stop_triggered": early_stop_triggered,
+                    "early_stop_reason": early_stop_reason,
+                    "best_pre72k_step": best_pre72k_step,
+                    "best_pre72k_score": best_pre72k_score if math.isfinite(best_pre72k_score) else None,
+                    "best_pre72k_path": best_pre72k_path,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        if early_stop_triggered and best_pre72k_path and os.path.isdir(best_pre72k_path):
+            logger.warning(
+                "Early stop was triggered. Skipping final pipeline export from the current in-memory model and keeping the preserved checkpoint instead: %s",
+                best_pre72k_path,
+            )
+            accelerator.end_training()
+            return
+
         unet = accelerator.unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())

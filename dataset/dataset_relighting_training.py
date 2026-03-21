@@ -82,7 +82,8 @@ class NeuralGafferTrainingData(Dataset):
                  validation=False,
                  relighting_only=False,
                  image_preprocessed = False,
-                 dataset_type=None
+                 dataset_type=None,
+                 random_lighting_condition_prob: float = 0.1,
                  ) -> None:
         """
         Neural Gaffer 训练数据集。
@@ -108,6 +109,7 @@ class NeuralGafferTrainingData(Dataset):
 
         self.preprocessed_lighting_dir = lighting_dir
         self.dataset_type = dataset_type
+        self.random_lighting_condition_prob = float(random_lighting_condition_prob)
 
         # if rank == 0:
         # total_objects = len(self.paths)
@@ -285,7 +287,7 @@ class NeuralGafferTrainingData(Dataset):
             # 10% chance to make lighting_idx_cond (lighting condition if the input condition image) to be -1
             # lighting_idx_cond = -1 表示条件图使用“随机区域光”版本，
             # 可以增加训练时的光照多样性。
-            if random.random() < 0.1:
+            if random.random() < self.random_lighting_condition_prob:
                 lighting_idx_cond = -1
 
         if self.dataset_type == 'unseen_object_with_random_area_light_condition':
