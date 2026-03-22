@@ -2,6 +2,7 @@ pretrained_model_name_or_path = /4T/huggingface_cache/models--kxic--zero123-xl/s
 output_dir = logs/neural_gaffer_training_gpu1_highlight
 gradient_accumulation_steps = 1
 mixed_precision = fp16
+set_grads_to_none = true
 training_batch_size = 6
 dataloader_num_workers = 4
 num_validation_images = 1

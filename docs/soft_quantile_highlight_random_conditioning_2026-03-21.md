@@ -178,56 +178,6 @@ Recommended default:
 - save every `1000` steps
 - continue selecting the best checkpoint within the training window
 
-## Memory / Throughput Optimizations Within the Same Architecture
-
-The following options do not increase model size, parameter count, or network complexity:
-
-### 1. Low-risk options worth enabling first
-
-- `allow_tf32 = true`
-  - Improves training throughput on Ampere / Ada GPUs.
-  - Does not change model structure.
-  - Code path already exists in `parse_args.py` and `neural_gaffer_training.py`.
-- keep `enable_xformers_memory_efficient_attention = true`
-  - This is already supported.
-  - When enabled, the code also enables `vae.enable_tiling()`, which helps memory usage during decoding.
-- keep `set_grads_to_none = true`
-  - Slightly reduces memory fragmentation and optimizer overhead.
-
-### 2. Best memory-saving option when GPU memory becomes tight
-
-- `gradient_checkpointing = true`
-  - This is the cleanest way to reduce activation memory without changing the network.
-  - Tradeoff: slower backward pass.
-  - Recommended only when memory is the bottleneck.
-
-### 3. Useful if optimizer state becomes the bottleneck
-
-- `use_8bit_adam = true`
-  - Reduces optimizer-state memory.
-  - Does not change the model.
-  - Worth trying if memory is limiting batch size or validation frequency.
-
-### 4. Throughput-side optimization that may improve actual wall-clock performance
-
-- increase `dataloader_num_workers` moderately if CPU and storage can keep up
-  - This does not change GPU memory much.
-  - It can reduce dataloader stalls and improve effective training speed.
-
-### 5. Emergency fallback if an 80k run becomes unstable in memory
-
-- reduce `training_batch_size`
-- compensate with `gradient_accumulation_steps`
-
-This keeps the effective batch size closer to the current setup, but it is mainly a memory fallback and not the first choice for performance.
-
-### Recommended priority order
-
-1. enable `allow_tf32`
-2. keep `xformers + vae tiling`
-3. turn on `gradient_checkpointing` only if memory pressure appears
-4. try `use_8bit_adam` only if optimizer memory is the limiting factor
-
 ## Recommended Next Experiment
 
 The most targeted follow-up is:
@@ -249,8 +199,6 @@ Metrics and configs:
 - `wandb/run-20260318_104331-5y90hbdc/files/config.yaml`
 - `wandb/run-20260319_054056-qju56ygl/files/config.yaml`
 - `wandb/run-20260321_104506-nsniycxi/files/config.yaml`
-- `parse_args.py`
-- `neural_gaffer_training.py`
 
 Representative rendering panels:
 
@@ -313,53 +261,9 @@ random_lighting_condition_prob=0.5
 按 random_lighting 样本单独加权
 改成更复杂的局部对比/模糊高光定义
 
-## VRAM Optimization Notes
-
-The following options do not change the network size or model structure, but can reduce memory usage in the current codebase.
-
-### Already enabled in the current setup
-
-- `mixed_precision = fp16`
-- xFormers memory-efficient attention is enabled by default in the trainer argument parser
-- `set_grads_to_none = true` is already the default
-- VAE tiling is enabled when xFormers is active
-
-These are already the low-risk memory optimizations that should remain on.
-
-### Worth enabling first if memory becomes tight
-
-- `gradient_checkpointing = true`
-  - safest structural no-op memory saver in training
-  - expected tradeoff: slower backward pass
-- `use_8bit_adam = true`
-  - reduces optimizer-state memory
-  - expected tradeoff: depends on bitsandbytes stability in the current environment
-
-### Optional for exploratory runs only
-
-- `use_ema = false`
-  - saves the EMA copy of the UNet from staying on GPU during training
-  - expected tradeoff: slightly weaker checkpoint smoothing, so this is better for fast ablations than for final long runs
-
-### Validation-side memory and runtime controls
-
-These do not reduce the main training activation memory much, but they help keep long runs lighter overall:
-
-- increase `validation_steps` when doing quick smoke tests
-- reduce the number of logged validation splits for short debugging runs
-- keep `num_validation_images = 1`
-
-### Recommended memory fallback order
-
-If a future run is close to OOM, the preferred order is:
-
-1. keep `fp16`, xFormers, and `set_grads_to_none` as-is
-2. enable `gradient_checkpointing = true`
-3. enable `use_8bit_adam = true` if needed
-4. disable `use_ema` only for short exploratory runs
-
-This preserves the current architecture while giving the best chance of lowering memory pressure with minimal behavior change.
-
+时间步退火 (Timestep Annealing) —— 让物理约束慢慢生效：
+不要在所有的 $t$ 步都加上全额的 image_space_loss。
+在 $t$ 很大的时候（早期，图像很模糊），物理约束的权重应该接近 0。只有当 $t$ 比较小（比如 $t < 300$，预测出的 $x_0$ 已经很清晰、边缘很锐利了）时，再逐渐增大高光 Loss 的权重。这样能避免早期模糊的面积光被阈值切碎。
 
 cd /4T/CXY/Neural_Gaffer
 LOG=logs/neural_gaffer_training_gpu1_highlight/restart_gpu0_$(date +%Y%m%d_%H%M%S).log
@@ -373,3 +277,7 @@ torchrun --standalone --nnodes=1 --nproc_per_node=1 neural_gaffer_training.py \
   --config configs/neural_gaffer_training_gpu1_highlight.txt
 ' > "$LOG" 2>&1 < /dev/null & disown
 echo "$LOG"
+
+
+cd /4T/CXY/Neural_Gaffer
+tail -f "$(ls -1t logs/neural_gaffer_training_gpu1_highlight/restart_gpu0_*.log | head -n 1)"
