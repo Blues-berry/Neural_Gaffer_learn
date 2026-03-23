@@ -1,5 +1,13 @@
 import configargparse
 import argparse
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in ("1", "true", "yes", "y", "on")
+
+
 def parse_args(input_args=None):
     parser = configargparse.ArgumentParser(description="Simple example of a Neural Gaffer training script.")
     parser.add_argument('--config', is_config_file=True,
@@ -179,10 +187,14 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", default=True, help="Whether or not to use xformers."
+        "--enable_xformers_memory_efficient_attention",
+        type=parse_bool,
+        default=True,
+        help="Whether or not to use xformers.",
     )
     parser.add_argument(
         "--set_grads_to_none",
+        type=parse_bool,
         default=True,
         help=(
             "Save more memory by using setting grads to None instead of zero. Be aware, that this changes certain"
@@ -353,6 +365,12 @@ def parse_args(input_args=None):
         type=float,
         default=0.95,
         help="Upper clamp for the adaptive highlight threshold so area-light highlights remain sufficiently wide.",
+    )
+    parser.add_argument(
+        "--highlight_quantile_blur_sigma",
+        type=float,
+        default=0.0,
+        help="Optional Gaussian blur sigma applied only to the luminance map used for quantile-threshold estimation. The final highlight score is still computed from the original image.",
     )
     parser.add_argument(
         "--foreground_background_threshold",

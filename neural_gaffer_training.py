@@ -610,6 +610,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         highlight_quantile=getattr(args, "highlight_quantile", 0.95),
         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+        quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
     image_foreground_mask = compute_foreground_mask(
         gt_image=gt_images_tensor * 2 - 1,
@@ -759,6 +760,31 @@ def compute_foreground_mask(
     return foreground_mask
 
 
+def maybe_blur_luminance_for_threshold(
+    luminance: torch.Tensor,
+    blur_sigma: float = 0.0,
+):
+    """
+    仅为阈值估计分支对亮度图做轻微高斯模糊，增强高光区域的空间连贯性。
+
+    注意:
+    - 这个模糊结果只用于 quantile threshold 的估计
+    - 最终高光 score / mask 仍然基于原始亮度图计算
+    """
+    sigma = float(blur_sigma or 0.0)
+    if sigma <= 0.0:
+        return luminance
+
+    radius = max(1, int(math.ceil(3.0 * sigma)))
+    kernel_size = 2 * radius + 1
+    return kornia.filters.gaussian_blur2d(
+        luminance,
+        (kernel_size, kernel_size),
+        (sigma, sigma),
+        border_type="reflect",
+    )
+
+
 def resolve_highlight_threshold_map(
     luminance: torch.Tensor,
     foreground_mask: torch.Tensor,
@@ -767,12 +793,14 @@ def resolve_highlight_threshold_map(
     highlight_quantile: float = 0.95,
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
+    quantile_blur_sigma: float = 0.0,
 ):
     """
     为每张图像生成高光阈值。
 
     默认使用固定阈值；开启 quantile 模式后，会在前景像素内部取亮度分位数，
     并在 [min_threshold, max_threshold] 区间内做裁剪。
+    当 quantile_blur_sigma > 0 时，会先对亮度图做轻微高斯模糊，再估计分位数阈值。
     """
     base_threshold = float(np.clip(threshold, 0.0, 0.999))
     threshold_map = torch.full(
@@ -789,7 +817,11 @@ def resolve_highlight_threshold_map(
     min_threshold = float(np.clip(min_threshold, 0.0, 0.999))
     max_threshold = float(np.clip(max_threshold, min_threshold, 0.999))
 
-    flat_luminance = luminance.reshape(luminance.shape[0], -1)
+    threshold_luminance = maybe_blur_luminance_for_threshold(
+        luminance,
+        blur_sigma=quantile_blur_sigma,
+    )
+    flat_luminance = threshold_luminance.reshape(threshold_luminance.shape[0], -1)
     flat_foreground = foreground_mask.reshape(foreground_mask.shape[0], -1) > 0.5
 
     for batch_idx in range(luminance.shape[0]):
@@ -814,6 +846,7 @@ def compute_highlight_score_map(
     highlight_quantile: float = 0.95,
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
+    quantile_blur_sigma: float = 0.0,
 ):
     """
     生成高光软分数图和二值 mask。
@@ -841,6 +874,7 @@ def compute_highlight_score_map(
         highlight_quantile=highlight_quantile,
         min_threshold=min_threshold,
         max_threshold=max_threshold,
+        quantile_blur_sigma=quantile_blur_sigma,
     )
 
     normalized_excess = (luminance - threshold_map).clamp(min=0.0) / (1.0 - threshold_map).clamp_min(1e-6)
@@ -879,6 +913,7 @@ def compute_highlight_weight_map(
     highlight_quantile: float = 0.95,
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
+    quantile_blur_sigma: float = 0.0,
 ):
     """
     根据真实目标图像生成“高光区域权重图”，并缩放到 latent / noise loss 的分辨率。
@@ -911,6 +946,7 @@ def compute_highlight_weight_map(
         highlight_quantile=highlight_quantile,
         min_threshold=min_threshold,
         max_threshold=max_threshold,
+        quantile_blur_sigma=quantile_blur_sigma,
     )
     return foreground_mask * (1.0 + extra_weight * highlight_score)
 
@@ -961,6 +997,7 @@ def compute_highlight_mask(
     highlight_quantile: float = 0.95,
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
+    quantile_blur_sigma: float = 0.0,
 ):
     """
     生成与 latent loss 分辨率对齐的二值高光区域 mask。
@@ -974,6 +1011,7 @@ def compute_highlight_mask(
         highlight_quantile=highlight_quantile,
         min_threshold=min_threshold,
         max_threshold=max_threshold,
+        quantile_blur_sigma=quantile_blur_sigma,
     )
     return highlight_mask
 
@@ -1036,6 +1074,7 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         highlight_quantile=getattr(args, "highlight_quantile", 0.95),
         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+        quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
     )
     weight_map = compute_highlight_weight_map(
         gt_image=gt_image,
@@ -1049,6 +1088,7 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         highlight_quantile=getattr(args, "highlight_quantile", 0.95),
         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+        quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
     )
     weight_norm = ((weight_map - 1.0) / max(1e-6, getattr(args, "highlight_loss_weight", 1.0))).clamp(0.0, 1.0)
 
@@ -1142,10 +1182,13 @@ def build_wandb_run_name(args) -> str:
     threshold = getattr(args, "highlight_threshold", None)
     extra_weight = getattr(args, "highlight_loss_weight", None)
     gamma = getattr(args, "highlight_gamma", None)
+    quantile_blur_sigma = float(getattr(args, "highlight_quantile_blur_sigma", 0.0) or 0.0)
     image_space_constraint_warmup_steps = int(getattr(args, "image_space_constraint_warmup_steps", 0) or 0)
     highlight_loss_weight_warmup_steps = int(getattr(args, "highlight_loss_weight_warmup_steps", 0) or 0)
     if getattr(args, "highlight_use_quantile_threshold", False):
         parts.append(f"q{_format_run_float_token(getattr(args, 'highlight_quantile', 0.95), scale=100)}")
+        if quantile_blur_sigma > 0.0:
+            parts.append(f"gb{_format_run_float_token(quantile_blur_sigma, scale=10)}")
     elif threshold is not None:
         parts.append(f"t{_format_run_float_token(threshold, scale=100)}")
     parts.append(f"r{_format_run_float_token(random_lighting_condition_prob, scale=100)}")
@@ -1276,15 +1319,24 @@ def main(args):
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
-            import xformers
+            try:
+                import xformers
 
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                xformers_version = version.parse(xformers.__version__)
+                if xformers_version == version.parse("0.0.16"):
+                    logger.warn(
+                        "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                    )
+                unet.enable_xformers_memory_efficient_attention()
+                vae.enable_tiling()
+                logger.info("Enabled xFormers memory efficient attention.")
+            except Exception as exc:
+                logger.warning(
+                    "Failed to enable xFormers memory efficient attention; continuing without it. "
+                    "This usually means the installed xFormers kernels do not support the current GPU or dtype. "
+                    "Error: %s",
+                    exc,
                 )
-            unet.enable_xformers_memory_efficient_attention()
-            vae.enable_tiling()
         #else:
             #raise ValueError("xformers is not available. Make sure it is installed correctly")
 
@@ -1303,10 +1355,15 @@ def main(args):
         )
 
 
-    # Enable TF32 for faster training on Ampere GPUs,
-    # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
+    # Enable TF32 for faster training on modern NVIDIA GPUs.
+    # Also let cuDNN autotune convolution kernels for our fixed-size 256x256 training pipeline.
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.set_float32_matmul_precision("high")
+
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
 
     if args.scale_lr:
         args.learning_rate = (
@@ -1343,7 +1400,7 @@ def main(args):
     use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", True)
     if use_highlight_weighted_loss:
         logger.info(
-            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
+            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s",
             getattr(args, "highlight_loss_weight", 1.0),
             getattr(args, "highlight_loss_weight_warmup_steps", 0),
             getattr(args, "highlight_threshold", 0.8),
@@ -1353,13 +1410,14 @@ def main(args):
             getattr(args, "highlight_quantile", 0.95),
             getattr(args, "highlight_min_threshold", 0.6),
             getattr(args, "highlight_max_threshold", 0.95),
+            getattr(args, "highlight_quantile_blur_sigma", 0.0),
         )
     else:
         logger.info("Latent/noise-space highlight-weighted diffusion loss disabled")
 
     if use_image_space_highlight_loss:
         logger.info(
-            "Image-space highlight constraint enabled with constraint_weight=%s constraint_warmup_steps=%s highlight_weight=%s highlight_weight_warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s",
+            "Image-space highlight constraint enabled with constraint_weight=%s constraint_warmup_steps=%s highlight_weight=%s highlight_weight_warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s",
             getattr(args, "image_space_constraint_weight", 0.1),
             getattr(args, "image_space_constraint_warmup_steps", 0),
             getattr(args, "highlight_loss_weight", 1.0),
@@ -1371,6 +1429,7 @@ def main(args):
             getattr(args, "highlight_quantile", 0.95),
             getattr(args, "highlight_min_threshold", 0.6),
             getattr(args, "highlight_max_threshold", 0.95),
+            getattr(args, "highlight_quantile_blur_sigma", 0.0),
         )
     else:
         logger.info("Image-space highlight constraint disabled")
@@ -1490,6 +1549,10 @@ def main(args):
         )   
     
        
+    train_prefetch_factor = 2 if args.dataloader_num_workers and args.dataloader_num_workers > 0 else None
+    train_persistent_workers = bool(args.dataloader_num_workers and args.dataloader_num_workers > 0)
+    eval_persistent_workers = True
+
     # for training
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -1497,7 +1560,8 @@ def main(args):
         batch_size=args.training_batch_size,
         num_workers=args.dataloader_num_workers,
         pin_memory=True,
-        # prefetch_factor=3,
+        persistent_workers=train_persistent_workers,
+        prefetch_factor=train_prefetch_factor,
     )
 
     validation_dataloader_random_light_condition = torch.utils.data.DataLoader(
@@ -1506,6 +1570,8 @@ def main(args):
         batch_size=4,
         num_workers=1,
         pin_memory=True,
+        persistent_workers=eval_persistent_workers,
+        prefetch_factor=2,
     )
 
     # for validation set logs
@@ -1515,6 +1581,8 @@ def main(args):
         batch_size=4,
         num_workers=1,
         pin_memory=True,
+        persistent_workers=eval_persistent_workers,
+        prefetch_factor=2,
     )
 
     validation_dataloader_seen_lighting = torch.utils.data.DataLoader(
@@ -1523,6 +1591,8 @@ def main(args):
         batch_size=4,
         num_workers=1,
         pin_memory=True,
+        persistent_workers=eval_persistent_workers,
+        prefetch_factor=2,
     )
 
     # for unseen objects validation set logs    
@@ -1532,6 +1602,8 @@ def main(args):
         batch_size=4,
         num_workers=1,
         pin_memory=True,
+        persistent_workers=eval_persistent_workers,
+        prefetch_factor=2,
     )
 
     # for training set logs
@@ -1540,6 +1612,9 @@ def main(args):
         shuffle=False,
         batch_size=4,
         num_workers=1,
+        pin_memory=True,
+        persistent_workers=eval_persistent_workers,
+        prefetch_factor=2,
     )
     
     # Scheduler and math around the number of training steps.
@@ -1802,6 +1877,7 @@ def main(args):
                     highlight_quantile=getattr(args, "highlight_quantile", 0.95),
                     min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                     max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+                    quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
                 ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                 latent_foreground_mask = compute_foreground_mask(
                     gt_image=gt_image,
@@ -1843,6 +1919,7 @@ def main(args):
                         highlight_quantile=getattr(args, "highlight_quantile", 0.95),
                         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+                        quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
                     ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                     # weighted_loss: 每个位置的 loss 乘以空间权重
                     weighted_loss = diffusion_per_pixel_loss * weight_map
@@ -1885,6 +1962,7 @@ def main(args):
                                 highlight_quantile=getattr(args, "highlight_quantile", 0.95),
                                 min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                                 max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+                                quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             image_weighted_loss = image_per_pixel_loss * image_weight_map
                             image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
@@ -1899,6 +1977,7 @@ def main(args):
                                 highlight_quantile=getattr(args, "highlight_quantile", 0.95),
                                 min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                                 max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+                                quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             image_foreground_mask = compute_foreground_mask(
                                 gt_image=gt_image,
