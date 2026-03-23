@@ -346,31 +346,50 @@ def parse_args(input_args=None):
         "--highlight_use_quantile_threshold",
         type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
         default=False,
-        help="Adapt the highlight threshold per image from foreground luminance quantiles instead of using only a fixed threshold.",
+        help="Adapt the highlight threshold per image from foreground quantiles instead of using only a fixed threshold. The quantile is computed in luminance space for relative_mode=none, otherwise in the selected relative-highlight measure.",
     )
     parser.add_argument(
         "--highlight_quantile",
         type=float,
         default=0.95,
-        help="Foreground luminance quantile used to derive the adaptive highlight threshold when quantile thresholding is enabled.",
+        help="Foreground quantile used to derive the adaptive highlight threshold when quantile thresholding is enabled.",
     )
     parser.add_argument(
         "--highlight_min_threshold",
         type=float,
         default=0.6,
-        help="Lower clamp for the adaptive highlight threshold to avoid overly broad highlight regions.",
+        help="Lower clamp for the adaptive highlight threshold. For relative_mode=none this is an absolute luminance bound; for difference/ratio it is a bound in the relative-highlight measure domain before converting back to the final luminance threshold map.",
     )
     parser.add_argument(
         "--highlight_max_threshold",
         type=float,
         default=0.95,
-        help="Upper clamp for the adaptive highlight threshold so area-light highlights remain sufficiently wide.",
+        help="Upper clamp for the adaptive highlight threshold. For relative_mode=none this is an absolute luminance bound; for difference/ratio it is a bound in the relative-highlight measure domain before converting back to the final luminance threshold map.",
     )
     parser.add_argument(
         "--highlight_quantile_blur_sigma",
         type=float,
         default=0.0,
         help="Optional Gaussian blur sigma applied only to the luminance map used for quantile-threshold estimation. The final highlight score is still computed from the original image.",
+    )
+    parser.add_argument(
+        "--highlight_relative_mode",
+        type=str,
+        default="none",
+        choices=["none", "difference", "ratio"],
+        help="Redefine highlight brightness relative to local context. 'difference' uses luminance-local_mean, 'ratio' uses luminance/(local_mean+eps). In these modes threshold/min/max values are interpreted in the relative-measure domain, not raw luminance.",
+    )
+    parser.add_argument(
+        "--highlight_local_kernel_size",
+        type=int,
+        default=15,
+        help="Odd kernel size used to estimate the local mean luminance for relative highlight detection.",
+    )
+    parser.add_argument(
+        "--highlight_relative_eps",
+        type=float,
+        default=1e-4,
+        help="Small epsilon used by ratio-based relative highlight detection to avoid division by zero.",
     )
     parser.add_argument(
         "--foreground_background_threshold",

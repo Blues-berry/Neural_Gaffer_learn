@@ -611,6 +611,9 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
         quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+        relative_mode=getattr(args, "highlight_relative_mode", "none"),
+        local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+        relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
     image_foreground_mask = compute_foreground_mask(
         gt_image=gt_images_tensor * 2 - 1,
@@ -785,6 +788,74 @@ def maybe_blur_luminance_for_threshold(
     )
 
 
+def compute_highlight_local_mean(
+    luminance: torch.Tensor,
+    foreground_mask: torch.Tensor | None = None,
+    local_kernel_size: int = 15,
+    eps: float = 1e-6,
+):
+    """
+    计算局部背景亮度均值，用于“相对局部更亮”的高光定义。
+
+    实现上只做轻量 pooling，不引入更重的卷积状态。
+
+    当提供 foreground_mask 时，会在前景内做归一化局部均值，避免白背景和图像边界
+    把 local_mean 人为拉高/拉低，从而让“相对局部更亮”的定义更稳定。
+    """
+    kernel_size = max(int(local_kernel_size or 0), 1)
+    if kernel_size <= 1:
+        return luminance
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    padding = kernel_size // 2
+
+    if foreground_mask is None:
+        padded_luminance = F.pad(luminance, (padding, padding, padding, padding), mode="reflect")
+        return F.avg_pool2d(padded_luminance, kernel_size=kernel_size, stride=1, padding=0)
+
+    foreground_mask = foreground_mask.to(device=luminance.device, dtype=luminance.dtype)
+    masked_luminance = luminance * foreground_mask
+    kernel_area = float(kernel_size * kernel_size)
+    local_sum = F.avg_pool2d(masked_luminance, kernel_size=kernel_size, stride=1, padding=padding) * kernel_area
+    local_weight = F.avg_pool2d(foreground_mask, kernel_size=kernel_size, stride=1, padding=padding) * kernel_area
+    safe_local_mean = local_sum / local_weight.clamp_min(float(eps))
+    return torch.where(local_weight > float(eps), safe_local_mean, luminance)
+
+
+def resolve_highlight_reference_map(
+    luminance: torch.Tensor,
+    foreground_mask: torch.Tensor | None = None,
+    relative_mode: str = "none",
+    local_kernel_size: int = 15,
+    relative_eps: float = 1e-4,
+):
+    """
+    生成用于高光判定的 reference/measure。
+
+    返回:
+    - reference_map: 局部背景亮度基线
+    - measure_map: 用于 quantile / fixed threshold 的“亮度定义”
+      * none: 原始 luminance
+      * difference: luminance - local_mean
+      * ratio: luminance / (local_mean + eps)
+    """
+    mode = str(relative_mode or "none").lower()
+    if mode == "none":
+        return luminance, luminance
+
+    local_mean = compute_highlight_local_mean(
+        luminance,
+        foreground_mask=foreground_mask,
+        local_kernel_size=local_kernel_size,
+        eps=relative_eps,
+    )
+    if mode == "difference":
+        return local_mean, luminance - local_mean
+    if mode == "ratio":
+        return local_mean, luminance / local_mean.clamp_min(float(relative_eps))
+    raise ValueError(f"Unsupported highlight_relative_mode: {relative_mode}")
+
+
 def resolve_highlight_threshold_map(
     luminance: torch.Tensor,
     foreground_mask: torch.Tensor,
@@ -794,6 +865,9 @@ def resolve_highlight_threshold_map(
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
     quantile_blur_sigma: float = 0.0,
+    relative_mode: str = "none",
+    local_kernel_size: int = 15,
+    relative_eps: float = 1e-4,
 ):
     """
     为每张图像生成高光阈值。
@@ -801,38 +875,78 @@ def resolve_highlight_threshold_map(
     默认使用固定阈值；开启 quantile 模式后，会在前景像素内部取亮度分位数，
     并在 [min_threshold, max_threshold] 区间内做裁剪。
     当 quantile_blur_sigma > 0 时，会先对亮度图做轻微高斯模糊，再估计分位数阈值。
-    """
-    base_threshold = float(np.clip(threshold, 0.0, 0.999))
-    threshold_map = torch.full(
-        (luminance.shape[0], 1, 1, 1),
-        base_threshold,
-        device=luminance.device,
-        dtype=luminance.dtype,
-    )
 
-    if not use_quantile_threshold:
-        return threshold_map
+    语义说明:
+    - relative_mode == "none" 时，threshold / min_threshold / max_threshold 都处于 luminance 域
+    - relative_mode 为 difference / ratio 时，上述阈值都处于 relative measure 域，
+      之后再还原成最终的 luminance threshold_map
+    """
+    mode = str(relative_mode or "none").lower()
+    if mode == "none":
+        base_threshold = float(np.clip(threshold, 0.0, 0.999))
+        min_threshold = float(np.clip(min_threshold, 0.0, 0.999))
+        max_threshold = float(np.clip(max_threshold, min_threshold, 0.999))
+    else:
+        base_threshold = float(threshold)
+        min_threshold = float(min_threshold)
+        max_threshold = float(max(max_threshold, min_threshold))
 
     quantile = float(np.clip(highlight_quantile, 0.0, 1.0))
-    min_threshold = float(np.clip(min_threshold, 0.0, 0.999))
-    max_threshold = float(np.clip(max_threshold, min_threshold, 0.999))
 
+    reference_map, _ = resolve_highlight_reference_map(
+        luminance,
+        foreground_mask=foreground_mask,
+        relative_mode=relative_mode,
+        local_kernel_size=local_kernel_size,
+        relative_eps=relative_eps,
+    )
     threshold_luminance = maybe_blur_luminance_for_threshold(
         luminance,
         blur_sigma=quantile_blur_sigma,
     )
-    flat_luminance = threshold_luminance.reshape(threshold_luminance.shape[0], -1)
-    flat_foreground = foreground_mask.reshape(foreground_mask.shape[0], -1) > 0.5
+    _, threshold_measure = resolve_highlight_reference_map(
+        threshold_luminance,
+        foreground_mask=foreground_mask,
+        relative_mode=relative_mode,
+        local_kernel_size=local_kernel_size,
+        relative_eps=relative_eps,
+    )
 
-    for batch_idx in range(luminance.shape[0]):
-        foreground_values = flat_luminance[batch_idx][flat_foreground[batch_idx]]
-        if foreground_values.numel() == 0:
-            continue
-        quantile_threshold = torch.quantile(foreground_values, quantile)
-        quantile_threshold = quantile_threshold.clamp(min=min_threshold, max=max_threshold)
-        threshold_map[batch_idx] = quantile_threshold.to(dtype=luminance.dtype)
+    if use_quantile_threshold:
+        base_thresholds = torch.full(
+            (luminance.shape[0], 1, 1, 1),
+            base_threshold,
+            device=luminance.device,
+            dtype=luminance.dtype,
+        )
+        flat_measure = threshold_measure.reshape(threshold_measure.shape[0], -1)
+        flat_foreground = foreground_mask.reshape(foreground_mask.shape[0], -1) > 0.5
 
-    return threshold_map
+        for batch_idx in range(luminance.shape[0]):
+            foreground_values = flat_measure[batch_idx][flat_foreground[batch_idx]]
+            if foreground_values.numel() == 0:
+                continue
+            quantile_threshold = torch.quantile(foreground_values, quantile)
+            quantile_threshold = quantile_threshold.clamp(min=min_threshold, max=max_threshold)
+            base_thresholds[batch_idx] = quantile_threshold.to(dtype=luminance.dtype)
+    else:
+        base_thresholds = torch.full(
+            (luminance.shape[0], 1, 1, 1),
+            base_threshold,
+            device=luminance.device,
+            dtype=luminance.dtype,
+        ).clamp(min=min_threshold, max=max_threshold)
+
+    if mode == "none":
+        return base_thresholds
+    if mode == "difference":
+        threshold_map = reference_map + base_thresholds
+    elif mode == "ratio":
+        threshold_map = reference_map * base_thresholds
+    else:
+        raise ValueError(f"Unsupported highlight_relative_mode: {relative_mode}")
+
+    return threshold_map.clamp(min=0.0, max=0.999)
 
 
 def compute_highlight_score_map(
@@ -847,6 +961,9 @@ def compute_highlight_score_map(
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
     quantile_blur_sigma: float = 0.0,
+    relative_mode: str = "none",
+    local_kernel_size: int = 15,
+    relative_eps: float = 1e-4,
 ):
     """
     生成高光软分数图和二值 mask。
@@ -875,6 +992,9 @@ def compute_highlight_score_map(
         min_threshold=min_threshold,
         max_threshold=max_threshold,
         quantile_blur_sigma=quantile_blur_sigma,
+        relative_mode=relative_mode,
+        local_kernel_size=local_kernel_size,
+        relative_eps=relative_eps,
     )
 
     normalized_excess = (luminance - threshold_map).clamp(min=0.0) / (1.0 - threshold_map).clamp_min(1e-6)
@@ -914,6 +1034,9 @@ def compute_highlight_weight_map(
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
     quantile_blur_sigma: float = 0.0,
+    relative_mode: str = "none",
+    local_kernel_size: int = 15,
+    relative_eps: float = 1e-4,
 ):
     """
     根据真实目标图像生成“高光区域权重图”，并缩放到 latent / noise loss 的分辨率。
@@ -921,7 +1044,8 @@ def compute_highlight_weight_map(
     参数说明:
     - gt_image: 真实图像，形状 [B, 3, H, W]，取值范围为 [-1, 1]
     - latent_hw: 目标分辨率，即 loss 张量的空间尺寸 (H_latent, W_latent)
-    - threshold: 亮度阈值；越高表示越只关注最亮的区域
+    - threshold: 高光阈值；在 relative_mode="none" 时它表示亮度阈值，
+      在 relative_mode 为 difference / ratio 时表示相对亮度 measure 的阈值
     - extra_weight: 高光区域相对于普通区域的额外权重
     - soft_weighting: 是否使用“软权重”而不是二值 mask
     - gamma: 软权重模式下的指数，越大表示越强调非常亮的像素
@@ -947,6 +1071,9 @@ def compute_highlight_weight_map(
         min_threshold=min_threshold,
         max_threshold=max_threshold,
         quantile_blur_sigma=quantile_blur_sigma,
+        relative_mode=relative_mode,
+        local_kernel_size=local_kernel_size,
+        relative_eps=relative_eps,
     )
     return foreground_mask * (1.0 + extra_weight * highlight_score)
 
@@ -998,6 +1125,9 @@ def compute_highlight_mask(
     min_threshold: float = 0.6,
     max_threshold: float = 0.95,
     quantile_blur_sigma: float = 0.0,
+    relative_mode: str = "none",
+    local_kernel_size: int = 15,
+    relative_eps: float = 1e-4,
 ):
     """
     生成与 latent loss 分辨率对齐的二值高光区域 mask。
@@ -1012,6 +1142,9 @@ def compute_highlight_mask(
         min_threshold=min_threshold,
         max_threshold=max_threshold,
         quantile_blur_sigma=quantile_blur_sigma,
+        relative_mode=relative_mode,
+        local_kernel_size=local_kernel_size,
+        relative_eps=relative_eps,
     )
     return highlight_mask
 
@@ -1075,6 +1208,9 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
         quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+        relative_mode=getattr(args, "highlight_relative_mode", "none"),
+        local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+        relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
     )
     weight_map = compute_highlight_weight_map(
         gt_image=gt_image,
@@ -1089,6 +1225,9 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
         quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+        relative_mode=getattr(args, "highlight_relative_mode", "none"),
+        local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+        relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
     )
     weight_norm = ((weight_map - 1.0) / max(1e-6, getattr(args, "highlight_loss_weight", 1.0))).clamp(0.0, 1.0)
 
@@ -1183,6 +1322,9 @@ def build_wandb_run_name(args) -> str:
     extra_weight = getattr(args, "highlight_loss_weight", None)
     gamma = getattr(args, "highlight_gamma", None)
     quantile_blur_sigma = float(getattr(args, "highlight_quantile_blur_sigma", 0.0) or 0.0)
+    relative_mode = str(getattr(args, "highlight_relative_mode", "none") or "none").lower()
+    relative_mode_token = {"none": "", "difference": "reld", "ratio": "relr"}.get(relative_mode, relative_mode)
+    local_kernel_size = int(getattr(args, "highlight_local_kernel_size", 15) or 15)
     image_space_constraint_warmup_steps = int(getattr(args, "image_space_constraint_warmup_steps", 0) or 0)
     highlight_loss_weight_warmup_steps = int(getattr(args, "highlight_loss_weight_warmup_steps", 0) or 0)
     if getattr(args, "highlight_use_quantile_threshold", False):
@@ -1191,6 +1333,9 @@ def build_wandb_run_name(args) -> str:
             parts.append(f"gb{_format_run_float_token(quantile_blur_sigma, scale=10)}")
     elif threshold is not None:
         parts.append(f"t{_format_run_float_token(threshold, scale=100)}")
+    if relative_mode_token:
+        parts.append(relative_mode_token)
+        parts.append(f"k{local_kernel_size}")
     parts.append(f"r{_format_run_float_token(random_lighting_condition_prob, scale=100)}")
     if extra_weight is not None and (use_highlight_weighted_loss or use_image_space_highlight_loss):
         parts.append(f"w{extra_weight:g}")
@@ -1400,7 +1545,7 @@ def main(args):
     use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", True)
     if use_highlight_weighted_loss:
         logger.info(
-            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s",
+            "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s relative_mode=%s local_kernel=%s relative_eps=%s",
             getattr(args, "highlight_loss_weight", 1.0),
             getattr(args, "highlight_loss_weight_warmup_steps", 0),
             getattr(args, "highlight_threshold", 0.8),
@@ -1411,13 +1556,16 @@ def main(args):
             getattr(args, "highlight_min_threshold", 0.6),
             getattr(args, "highlight_max_threshold", 0.95),
             getattr(args, "highlight_quantile_blur_sigma", 0.0),
+            getattr(args, "highlight_relative_mode", "none"),
+            getattr(args, "highlight_local_kernel_size", 15),
+            getattr(args, "highlight_relative_eps", 1e-4),
         )
     else:
         logger.info("Latent/noise-space highlight-weighted diffusion loss disabled")
 
     if use_image_space_highlight_loss:
         logger.info(
-            "Image-space highlight constraint enabled with constraint_weight=%s constraint_warmup_steps=%s highlight_weight=%s highlight_weight_warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s",
+            "Image-space highlight constraint enabled with constraint_weight=%s constraint_warmup_steps=%s highlight_weight=%s highlight_weight_warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s relative_mode=%s local_kernel=%s relative_eps=%s",
             getattr(args, "image_space_constraint_weight", 0.1),
             getattr(args, "image_space_constraint_warmup_steps", 0),
             getattr(args, "highlight_loss_weight", 1.0),
@@ -1430,6 +1578,9 @@ def main(args):
             getattr(args, "highlight_min_threshold", 0.6),
             getattr(args, "highlight_max_threshold", 0.95),
             getattr(args, "highlight_quantile_blur_sigma", 0.0),
+            getattr(args, "highlight_relative_mode", "none"),
+            getattr(args, "highlight_local_kernel_size", 15),
+            getattr(args, "highlight_relative_eps", 1e-4),
         )
     else:
         logger.info("Image-space highlight constraint disabled")
@@ -1878,6 +2029,9 @@ def main(args):
                     min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                     max_threshold=getattr(args, "highlight_max_threshold", 0.95),
                     quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+                    relative_mode=getattr(args, "highlight_relative_mode", "none"),
+                    local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+                    relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
                 ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                 latent_foreground_mask = compute_foreground_mask(
                     gt_image=gt_image,
@@ -1920,6 +2074,9 @@ def main(args):
                         min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                         max_threshold=getattr(args, "highlight_max_threshold", 0.95),
                         quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+                        relative_mode=getattr(args, "highlight_relative_mode", "none"),
+                        local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+                        relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
                     ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                     # weighted_loss: 每个位置的 loss 乘以空间权重
                     weighted_loss = diffusion_per_pixel_loss * weight_map
@@ -1963,6 +2120,9 @@ def main(args):
                                 min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                                 max_threshold=getattr(args, "highlight_max_threshold", 0.95),
                                 quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+                                relative_mode=getattr(args, "highlight_relative_mode", "none"),
+                                local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+                                relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             image_weighted_loss = image_per_pixel_loss * image_weight_map
                             image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
@@ -1978,6 +2138,9 @@ def main(args):
                                 min_threshold=getattr(args, "highlight_min_threshold", 0.6),
                                 max_threshold=getattr(args, "highlight_max_threshold", 0.95),
                                 quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+                                relative_mode=getattr(args, "highlight_relative_mode", "none"),
+                                local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+                                relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             image_foreground_mask = compute_foreground_mask(
                                 gt_image=gt_image,
