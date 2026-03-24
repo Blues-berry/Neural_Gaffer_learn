@@ -21,6 +21,31 @@ manager = Manager()
 # Create a queue for progress bar updates
 progress_queue = Queue()
 
+
+def load_requested_object_ids(input_json_path):
+    payload = json.load(open(input_json_path, 'r'))
+    if isinstance(payload, dict):
+        return list(payload.keys())
+    if isinstance(payload, list):
+        object_ids = []
+        for item in payload:
+            if isinstance(item, str):
+                object_ids.append(item)
+            elif isinstance(item, dict) and "uid" in item:
+                object_ids.append(item["uid"])
+        return object_ids
+    raise ValueError(f"Unsupported input_json payload type: {type(payload)}")
+
+
+def find_normal_map(filename, view_idx):
+    candidates = sorted(glob(os.path.join(filename, f'normal_{view_idx:03d}_*.png')))
+    if candidates:
+        return candidates[0]
+    legacy_path = os.path.join(filename, f'{view_idx:03d}_normals.png')
+    if os.path.exists(legacy_path):
+        return legacy_path
+    raise FileNotFoundError(f'Cannot find normal map for view {view_idx} under {filename}')
+
 def safe_l2_normalize_numpy(x, dim=-1, eps=1e-6):
     return x / np.linalg.norm(x, axis=dim, keepdims=True).clip(eps, None)
 
@@ -78,25 +103,29 @@ class DataPreprocessingProcess(multiprocessing.Process):
             if len(os.listdir(saved_folder)) != (192+4*9):
 
                 for cur_view_idx in range(self.starting_view, self.total_view):
+                    try:
+                        normals_image_path = find_normal_map(filename, cur_view_idx)
+                        target_RT_path = os.path.join(filename, '%03d_RT.npy' % (cur_view_idx))
+                        alpha_image_path = os.path.join(filename, 'random_lighting_%03d.png' % cur_view_idx)
+                        if not os.path.exists(target_RT_path) or not os.path.exists(alpha_image_path):
+                            print(f"Skipping incomplete object {filename}: missing RT/random lighting for view {cur_view_idx}")
+                            continue
 
-                    # normals_image_path = os.path.join(filename, 'normal_%03d_0001.png' % cur_view_idx)
-                    # target_RT_path = os.path.join(filename, '%03d_RT.npy' % (cur_view_idx))
-                    # target_RT = np.load(target_RT_path) # w2c
-                    # camera_normals_map = get_cond_normals_map(normals_image_path, target_RT)
-                    # camera_normals_map = camera_normals_map.resize(self.output_hw, Image.Resampling.BILINEAR)
-                    # saved_path = os.path.join(saved_folder, '%03d_normals.png' % (cur_view_idx))
-                    # camera_normals_map.save(saved_path)
+                        target_RT = np.load(target_RT_path) # w2c
+                        camera_normals_map = get_cond_normals_map(normals_image_path, target_RT)
+                        camera_normals_map = camera_normals_map.resize(self.output_hw, Image.Resampling.BILINEAR)
+                        saved_path = os.path.join(saved_folder, '%03d_normals.png' % (cur_view_idx))
+                        camera_normals_map.save(saved_path)
 
-                    alpha_image_path = os.path.join(filename, '%03d_alpha.png' % cur_view_idx)
-                    random_lighting_image = plt.imread(alpha_image_path)
+                        random_lighting_image = plt.imread(alpha_image_path)
+                        target_mask = random_lighting_image[..., -1] # [H, W]
 
-                    target_mask = random_lighting_image[..., -1] # [H, W]
-
-
-                    for cur_lighting_idx in range(self.starting_lighting,  self.lighting_per_view):
-                        target_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (cur_view_idx, cur_lighting_idx)))[0]
-
-                        if os.path.exists(target_image_path):
+                        for cur_lighting_idx in range(self.starting_lighting,  self.lighting_per_view):
+                            matches = glob(os.path.join(filename, '%03d_%03d_*.png' % (cur_view_idx, cur_lighting_idx)))
+                            if not matches:
+                                print(f"Skipping missing render image under {filename} for view={cur_view_idx} lighting={cur_lighting_idx}")
+                                continue
+                            target_image_path = matches[0]
 
                             img = plt.imread(target_image_path)
                             img = img[:, :, :3] * target_mask[:, :, None] + np.array([1., 1., 1.]) * (1 - target_mask[:, :, None])
@@ -105,11 +134,9 @@ class DataPreprocessingProcess(multiprocessing.Process):
                             img = img.resize(self.output_hw, Image.Resampling.BILINEAR)
                             saved_path = os.path.join(saved_folder, os.path.basename(target_image_path))
                             img.save(saved_path)
-
-                        else:
-                            print("Processing %s" % filename)
-                            print('Target_RT_path or target_envir_map_path does not exist !!!')
-                            continue
+                    except Exception as exc:
+                        print(f"Skipping incomplete object {filename} view {cur_view_idx}: {exc}")
+                        continue
             
 
             with lock:
@@ -131,7 +158,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--img_dir", type=str, default="/share/phoenix/nfs02/S6/localdisk/hj453/zero123/objaverse-rendering/filtered_V2_rendering/views_whole_sphere/", help="path to the folder containing environment maps")
     parser.add_argument("--output_dir", type=str, default="/home/hj453/code/zero123-hf/temp_val_result/preprocessed_environment_resized/preprocessed_envir_map_resized", help="path to the folder containing environment maps")
-    parser.add_argument("--input_json", type=str, help="input json file specified the object id")
+    parser.add_argument("--input_json", type=str, default=None, help="optional json file specifying object ids to preprocess")
 
     parser.add_argument("--num_workers", type=int, default=12, help="number of workers for multiprocessing")
     parser.add_argument("--total_view", type=int, default=12)
@@ -142,10 +169,14 @@ if __name__ == "__main__":
     img_paths = []
     args = parser.parse_args()
     
-    to_preocess_obj_ids = json.load(open(args.input_json, 'r'))
-    to_preocess_obj_ids = to_preocess_obj_ids.keys()
-    for obj_id in to_preocess_obj_ids:
-        img_paths.append(obj_id)
+    if args.input_json is not None:
+        to_preocess_obj_ids = load_requested_object_ids(args.input_json)
+        for obj_id in to_preocess_obj_ids:
+            img_paths.append(obj_id)
+    else:
+        for folder in os.listdir(args.img_dir):
+            if os.path.isdir(os.path.join(args.img_dir, folder)):
+                img_paths.append(folder)
     
     random.shuffle(img_paths)
 

@@ -1,0 +1,70 @@
+{
+  "sources": [
+    {
+      "id": "abo",
+      "domain": "ecommerce",
+      "official_name": "Amazon Berkeley Objects",
+      "official_url": "https://registry.opendata.aws/amazon-berkeley-objects/",
+      "formats": ["glb", "gltf"],
+      "access": "direct",
+      "license": "CC BY-NC 4.0",
+      "priority": "primary",
+      "notes": "Best fit for product-photo style household objects. Prefer direct glTF 2.0 models."
+    },
+    {
+      "id": "omniobject3d",
+      "domain": "both",
+      "official_name": "OmniObject3D",
+      "official_url": "https://github.com/omniobject3d/OmniObject3D",
+      "formats": ["glb", "obj", "fbx"],
+      "access": "openxlab_login",
+      "license": "check dataset terms on official download portal",
+      "priority": "primary",
+      "notes": "Useful as a shared supplement for both domains after category filtering."
+    },
+    {
+      "id": "google_scanned_objects",
+      "domain": "ecommerce",
+      "official_name": "Google Scanned Objects",
+      "official_url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models",
+      "formats": ["glb", "gltf"],
+      "access": "direct",
+      "license": "CC BY 4.0",
+      "priority": "supplement",
+      "notes": "Reliable direct source, but current public endpoint volume is small. Use as a direct supplement, not the main bulk source."
+    },
+    {
+      "id": "quaternius",
+      "domain": "landscape",
+      "official_name": "Quaternius",
+      "official_url": "https://quaternius.com/",
+      "formats": ["fbx", "obj", "blend", "glb"],
+      "access": "direct",
+      "license": "CC0",
+      "priority": "primary",
+      "notes": "Outdoor props, plants, rocks, buildings, animals. Strong volume source for landscape subset."
+    },
+    {
+      "id": "kenney",
+      "domain": "landscape",
+      "official_name": "Kenney Assets",
+      "official_url": "https://kenney.nl/assets",
+      "formats": ["fbx", "obj", "blend"],
+      "access": "direct",
+      "license": "CC0",
+      "priority": "primary",
+      "notes": "Useful for outdoor props and natural scene assets. Convert OBJ if needed before rendering."
+    },
+    {
+      "id": "smithsonian",
+      "domain": "landscape",
+      "official_name": "Smithsonian Open Access 3D",
+      "official_url": "https://3d.si.edu/explore?edan_fq%5B0%5D=media_usage%3ACC0&edan_q=",
+      "formats": ["glb", "obj", "usdz"],
+      "access": "manual_curated",
+      "license": "CC0 filtered assets only",
+      "priority": "supplement",
+      "notes": "Best used as curated hero assets for sculpture, artifact, and scanned-object coverage."
+    }
+  ]
+}

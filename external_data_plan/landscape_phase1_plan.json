@@ -1,0 +1,47 @@
+{
+  "domain": "landscape",
+  "target_count": 1000,
+  "output_manifest": "/4T/CXY/Neural_Gaffer_original/external_sources/manifests/landscape_external_1000.json",
+  "sources": [
+    {
+      "source_id": "smithsonian_nature",
+      "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/landscape/smithsonian/nature",
+      "target_count": 500,
+      "extensions": [".glb", ".gltf", ".fbx", ".obj"],
+      "include_keywords": [],
+      "exclude_keywords": []
+    },
+    {
+      "source_id": "smithsonian_heritage",
+      "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/landscape/smithsonian/heritage",
+      "target_count": 200,
+      "extensions": [".glb", ".gltf", ".fbx", ".obj"],
+      "include_keywords": [],
+      "exclude_keywords": []
+    },
+    {
+      "source_id": "omniobject3d_nature",
+      "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/landscape/omniobject3d",
+      "target_count": 300,
+      "extensions": [".glb", ".gltf", ".fbx", ".obj"],
+      "include_keywords": [],
+      "exclude_keywords": []
+    },
+    {
+      "source_id": "kenney_fallback",
+      "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/landscape/kenney",
+      "target_count": 531,
+      "extensions": [".glb", ".gltf", ".fbx", ".obj"],
+      "include_keywords": [],
+      "exclude_keywords": []
+    },
+    {
+      "source_id": "quaternius_fallback",
+      "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/landscape/quaternius",
+      "target_count": 300,
+      "extensions": [".glb", ".gltf", ".fbx", ".obj"],
+      "include_keywords": [],
+      "exclude_keywords": []
+    }
+  ]
+}

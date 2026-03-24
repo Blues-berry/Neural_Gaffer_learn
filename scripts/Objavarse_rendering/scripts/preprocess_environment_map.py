@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from PIL import Image
 import os
 import argparse
+import json
 from glob import glob
 from tqdm import tqdm
 from multiprocessing import Pool
@@ -20,6 +21,21 @@ manager = Manager()
 
 # Create a queue for progress bar updates
 progress_queue = Queue()
+
+
+def load_requested_object_ids(input_json_path):
+    payload = json.load(open(input_json_path, 'r'))
+    if isinstance(payload, dict):
+        return list(payload.keys())
+    if isinstance(payload, list):
+        object_ids = []
+        for item in payload:
+            if isinstance(item, str):
+                object_ids.append(item)
+            elif isinstance(item, dict) and "uid" in item:
+                object_ids.append(item["uid"])
+        return object_ids
+    raise ValueError(f"Unsupported input_json payload type: {type(payload)}")
 
 def generate_envir_map_dir(envmap_h, envmap_w):
     lat_step_size = np.pi / envmap_h
@@ -172,7 +188,7 @@ class DataPreprocessingProcess(multiprocessing.Process):
         self.output_hw = output_hw
         
         self.envir_map_paths = dict()
-        self.light_area_weight, self.view_dirs = generate_envir_map_dir(256, 512)
+        self.dir_cache = {}
         
 
     def run(self):
@@ -187,44 +203,60 @@ class DataPreprocessingProcess(multiprocessing.Process):
                 saved_folder_ldr = os.path.join(self.output_dir, 'LDR', self.input_file_paths[cur_object_idx])
                 saved_folder_hdr = os.path.join(self.output_dir, 'HDR_rescaled',self.input_file_paths[cur_object_idx])
                 saved_folder_hdr_raw = os.path.join(self.output_dir, 'HDR_raw',self.input_file_paths[cur_object_idx])
-                if not os.path.exists(saved_folder_ldr):
-                    os.makedirs(saved_folder_ldr)
-                    if not os.path.exists(saved_folder_hdr):
-                        os.makedirs(saved_folder_hdr)
-                    if not os.path.exists(saved_folder_hdr_raw):
-                        os.makedirs(saved_folder_hdr_raw)
-                    for cur_view_idx in range(self.total_view):
-                        # target_RT_path_temp = glob(os.path.join(filename, '%03d_%03d_*.png' % (cur_view_idx, 0)))[0]
-                        target_RT_path = os.path.join(filename,  '%03d_RT.npy' % (cur_view_idx))
-                        target_RT = np.load(target_RT_path)
-
-                        target_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (cur_view_idx, 0)))[0]
-                            # target image has a name like 000_000_cannon_2k_225.png, the envir map name is cannon_2k_225
+                expected_count = self.total_view * self.lighting_per_view
+                if (
+                    os.path.isdir(saved_folder_ldr)
+                    and os.path.isdir(saved_folder_hdr)
+                    and len(glob(os.path.join(saved_folder_ldr, '*.png'))) == expected_count
+                    and len(glob(os.path.join(saved_folder_hdr, '*.png'))) == expected_count
+                ):
+                    with lock:
+                        counter.value += 1
+                        progress_queue.put(1)
+                    continue
+                os.makedirs(saved_folder_ldr, exist_ok=True)
+                os.makedirs(saved_folder_hdr, exist_ok=True)
+                os.makedirs(saved_folder_hdr_raw, exist_ok=True)
+                for cur_view_idx in range(self.total_view):
+                    target_RT_path = os.path.join(filename,  '%03d_RT.npy' % (cur_view_idx))
+                    if not os.path.exists(target_RT_path):
+                        print(f"Skipping incomplete lighting object {filename}: missing RT for view {cur_view_idx}")
+                        continue
+                    target_RT = np.load(target_RT_path)
+            
+                    for cur_lighting_idx in range(self.lighting_per_view):
+                        matches = glob(os.path.join(filename, '%03d_%03d_*.png' % (cur_view_idx, cur_lighting_idx)))
+                        if not matches:
+                            print(f"Skipping missing lighting render under {filename} for view={cur_view_idx} lighting={cur_lighting_idx}")
+                            continue
+                        target_image_path = matches[0]
                         target_envir_map_name = os.path.basename(target_image_path)[8:-4]
-                
-                        for cur_lighting_idx in range(self.lighting_per_view):
-                            # print('Processing view %d, lighting %d' % (cur_view_idx, cur_lighting_idx))
-                            target_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (cur_view_idx, cur_lighting_idx)))[0]
-                                # target image has a name like 000_000_cannon_2k_225.png, the envir map name is cannon_2k_225
-                            target_envir_map_name = os.path.basename(target_image_path)[8:-4]
-                            
-                            if os.path.exists(target_RT_path) and os.path.exists(target_image_path):
-                                
-                                target_envir_map = envir_map_hdr_values[target_envir_map_name]
-                                target_envir_map_ldr, target_envir_map_hdr, envir_map_hdr_raw = rotate_and_preprcess_envir_map(target_envir_map, target_RT, light_area_weight=self.light_area_weight, view_dirs=self.view_dirs)
-                                target_envir_map_ldr = target_envir_map_ldr.resize(self.output_hw, Image.BILINEAR)
-                                target_envir_map_hdr = target_envir_map_hdr.resize(self.output_hw, Image.BILINEAR)
-                                saved_path_ldr = os.path.join(saved_folder_ldr, os.path.basename(target_image_path)[:-4] + '.png')
-                                saved_path_hdr = os.path.join(saved_folder_hdr, os.path.basename(target_image_path)[:-4] + '.png')
-                                target_envir_map_ldr.save(saved_path_ldr)
-                                target_envir_map_hdr.save(saved_path_hdr)
-                                # save hdr raw as exr file
-                                # saved_path_hdr_raw = os.path.join(saved_folder_hdr_raw, os.path.basename(target_image_path)[:-4] + '.exr')
-                                # pyexr.write(saved_path_hdr_raw, envir_map_hdr_raw, precision=pyexr.FLOAT)
-                            else:
-                                print("Processing %s" % filename)
-                                print('Target_RT_path or target_envir_map_path does not exist !!!')
-                                continue
+                        
+                        if target_envir_map_name not in envir_map_hdr_values:
+                            print(f"Missing HDR source for {target_envir_map_name}, skipping {target_image_path}")
+                            continue
+
+                        target_envir_map = envir_map_hdr_values[target_envir_map_name]
+                        env_h, env_w = target_envir_map.shape[0], target_envir_map.shape[1]
+                        cache_key = (env_h, env_w)
+                        if cache_key not in self.dir_cache:
+                            self.dir_cache[cache_key] = generate_envir_map_dir(env_h, env_w)
+                        light_area_weight, view_dirs = self.dir_cache[cache_key]
+                        target_envir_map_ldr, target_envir_map_hdr, envir_map_hdr_raw = rotate_and_preprcess_envir_map(
+                            target_envir_map,
+                            target_RT,
+                            light_area_weight=light_area_weight,
+                            view_dirs=view_dirs,
+                        )
+                        target_envir_map_ldr = target_envir_map_ldr.resize(self.output_hw, Image.BILINEAR)
+                        target_envir_map_hdr = target_envir_map_hdr.resize(self.output_hw, Image.BILINEAR)
+                        saved_path_ldr = os.path.join(saved_folder_ldr, os.path.basename(target_image_path)[:-4] + '.png')
+                        saved_path_hdr = os.path.join(saved_folder_hdr, os.path.basename(target_image_path)[:-4] + '.png')
+                        target_envir_map_ldr.save(saved_path_ldr)
+                        target_envir_map_hdr.save(saved_path_hdr)
+                        # save hdr raw as exr file
+                        # saved_path_hdr_raw = os.path.join(saved_folder_hdr_raw, os.path.basename(target_image_path)[:-4] + '.exr')
+                        # pyexr.write(saved_path_hdr_raw, envir_map_hdr_raw, precision=pyexr.FLOAT)
                     
                             
                     
@@ -247,6 +279,7 @@ if __name__ == "__main__":
     parser.add_argument("--img_dir", type=str, default="/scratch/datasets/hj453/objaverse-rendering/filtered_V2/rendered_images_resized", help="path to the folder containing environment maps")
     parser.add_argument("--output_dir", type=str, default="/scratch/datasets/hj453/objaverse-rendering/filtered_V2/preprocessed_environment_resized_new2", help="path to the folder containing environment maps")
     parser.add_argument("--lighting_dir", type=str, default="/scratch/datasets/hj453/objaverse-rendering/EXR_Env_Map_all_rescaled_rotated_flipped_256/", help="path to the folder containing environment maps")
+    parser.add_argument("--input_json", type=str, default=None, help="optional json file specifying object ids to preprocess")
 
 
     parser.add_argument("--num_workers", type=int, default=32, help="number of workers for multiprocessing")
@@ -256,9 +289,12 @@ if __name__ == "__main__":
     img_paths = []
     args = parser.parse_args()
     # include all folders
-    for folder in os.listdir(args.img_dir):
-        if os.path.isdir(os.path.join(args.img_dir, folder)):
-            img_paths.append(folder)
+    if args.input_json is not None:
+        img_paths = load_requested_object_ids(args.input_json)
+    else:
+        for folder in os.listdir(args.img_dir):
+            if os.path.isdir(os.path.join(args.img_dir, folder)):
+                img_paths.append(folder)
     
     
     # Define the number of processes

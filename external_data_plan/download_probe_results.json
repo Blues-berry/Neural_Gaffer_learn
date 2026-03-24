@@ -1,0 +1,79 @@
+{
+  "abo": {
+    "status": "ok",
+    "metadata_url": "https://amazon-berkeley-objects.s3.us-east-1.amazonaws.com/3dmodels/metadata/3dmodels.csv.gz",
+    "sample_model_id": "B01N2PLWIL",
+    "sample_model_url": "https://amazon-berkeley-objects.s3.us-east-1.amazonaws.com/3dmodels/original/L/B01N2PLWIL.glb",
+    "sample_magic": "glTF",
+    "license": "CC BY 4.0",
+    "mode": "direct_auto_download"
+  },
+  "quaternius": {
+    "status": "ok",
+    "downloads": [
+      {
+        "page_url": "https://quaternius.com/packs/ultimatenature.html",
+        "drive_folder_url": "https://drive.google.com/drive/folders/1-Kl0L_Jg8awbh0S5T-z3zxh4mVlnxTpa?usp=sharing"
+      },
+      {
+        "page_url": "https://quaternius.com/packs/stylizednaturemegakit.html",
+        "drive_folder_url": null
+      },
+      {
+        "page_url": "https://quaternius.com/packs/ultimateanimatedanimals.html",
+        "drive_folder_url": "https://drive.google.com/drive/folders/1uJ3N5HfB7jKTseJUNQr3N4YaN0UuEtHk?usp=sharing"
+      }
+    ],
+    "license": "CC0",
+    "mode": "page_auto_plus_manual_folder_download"
+  },
+  "kenney": {
+    "status": "ok",
+    "samples": [
+      {
+        "page_url": "https://kenney.nl/assets/graveyard-kit",
+        "zip_url": "https://kenney.nl/media/pages/assets/graveyard-kit/bb13ecc2b6-1760691807/kenney_graveyard-kit_5.0.zip",
+        "zip_reachable": true,
+        "license_cc0": true
+      },
+      {
+        "page_url": "https://kenney.nl/assets/city-kit-roads",
+        "zip_url": "https://kenney.nl/media/pages/assets/city-kit-roads/4b84d0ea8d-1741864740/kenney_city-kit-roads.zip",
+        "zip_reachable": true,
+        "license_cc0": true
+      },
+      {
+        "page_url": "https://kenney.nl/assets/minigolf-kit",
+        "zip_url": "https://kenney.nl/media/pages/assets/minigolf-kit/378928a3bb-1741163874/kenney_minigolf-kit.zip",
+        "zip_reachable": true,
+        "license_cc0": true
+      }
+    ],
+    "license": "CC0",
+    "mode": "direct_auto_download"
+  },
+  "omniobject3d": {
+    "status": "reachable",
+    "url": "https://openxlab.org.cn/datasets/detail/omniobject3d/OmniObject3D-New",
+    "final_url": "https://openxlab.org.cn/datasets/detail/omniobject3d/OmniObject3D-New",
+    "http_status": 200,
+    "mode": "portal_login_likely_required",
+    "license": "check official portal terms"
+  },
+  "3d_future": {
+    "status": "reachable",
+    "url": "https://tianchi.aliyun.com/dataset/98063",
+    "final_url": "https://tianchi.aliyun.com/dataset/98063",
+    "http_status": 200,
+    "mode": "portal_login_likely_required",
+    "license": "check official portal terms"
+  },
+  "smithsonian": {
+    "status": "reachable",
+    "url": "https://3d.si.edu/explore?edan_fq%5B0%5D=media_usage%3ACC0&edan_q=",
+    "final_url": "https://3d.si.edu/explore?edan_fq%5B0%5D=media_usage%3ACC0&edan_q=",
+    "http_status": 200,
+    "mode": "manual_curated_download",
+    "license": "CC0-filtered assets only"
+  }
+}

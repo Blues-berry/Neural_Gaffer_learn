@@ -1,0 +1,24 @@
+{
+  "domain": "three_future_standalone",
+  "target_count": 0,
+  "output_manifest": "/4T/CXY/Neural_Gaffer_original/subdataset/standalone/three_future/manifests/three_future_model_manifest.json",
+  "notes": "Standalone 3D-FUTURE staging plan. This workspace is intentionally separate from the active ecommerce, landscape, and official_2000 pipelines.",
+  "sources": [
+    {
+      "source_id": "3d_future_model",
+      "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/downloads/3d_future/model_extracted",
+      "extensions": [
+        ".obj",
+        ".glb",
+        ".gltf",
+        ".fbx"
+      ],
+      "include_keywords": [
+        "normalized_model",
+        "raw_model",
+        "model"
+      ],
+      "recursive": true
+    }
+  ]
+}

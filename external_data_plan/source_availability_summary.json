@@ -1,0 +1,49 @@
+{
+  "snapshot_date_utc": "2026-03-19",
+  "ecommerce": {
+    "abo": {
+      "available_count": 7953,
+      "count_type": "3d_models",
+      "access_mode": "direct_auto_download",
+      "note": "Exact count from official 3dmodels.csv.gz"
+    },
+    "omniobject3d": {
+      "available_count": 193,
+      "count_type": "category_archives_estimate",
+      "access_mode": "openxlab_login",
+      "note": "Based on visible /raw/videos_processed category tar files"
+    },
+    "google_scanned_objects": {
+      "available_count": 20,
+      "count_type": "public_endpoint_models",
+      "access_mode": "direct_auto_download",
+      "note": "Current public Fuel endpoint returned 20 entries"
+    }
+  },
+  "landscape": {
+    "quaternius": {
+      "available_count": 302,
+      "count_type": "models_in_selected_packs",
+      "access_mode": "page_auto_plus_manual_folder_download",
+      "note": "Ultimate Nature 150 + Stylized Nature MegaKit 116 + Ultimate Animated Animals 12 + Texture Fantasy Nature 11 + Simple Nature 13"
+    },
+    "kenney": {
+      "available_count": 48,
+      "count_type": "3d_asset_packs",
+      "access_mode": "direct_auto_download",
+      "note": "Counted from 3 pages of official 3D asset listings"
+    },
+    "omniobject3d": {
+      "available_count": 193,
+      "count_type": "category_archives_estimate",
+      "access_mode": "openxlab_login",
+      "note": "Same category-archive source can be filtered for plants, animals, props, and sculptures"
+    },
+    "smithsonian": {
+      "available_count": null,
+      "count_type": "manual_curated",
+      "access_mode": "manual_curated_download",
+      "note": "Official CC0 search page reachable; intended as supplementary curated source, not bulk source"
+    }
+  }
+}

@@ -32,6 +32,12 @@ parser.add_argument(
     required=True,
     help="Path to the object file",
 )
+parser.add_argument(
+    "--object_uid",
+    type=str,
+    default=None,
+    help="Optional unique id used for the output subdirectory",
+)
 # parsser.add_argument("--output_dir", type=str, default="{args.output_dir}/views_whole_sphere")
 parser.add_argument("--output_dir", type=str, default="/home/hj453/code/zero123/objaverse-rendering/hf-objaverse-v1-last-700/views_whole_sphere")
 
@@ -291,8 +297,12 @@ def load_object(object_path: str) -> None:
         """Loads a glb model into the scene."""
         if object_path.endswith(".glb"):
             bpy.ops.import_scene.gltf(filepath=object_path, merge_vertices=True)
+        elif object_path.endswith(".gltf"):
+            bpy.ops.import_scene.gltf(filepath=object_path, merge_vertices=True)
         elif object_path.endswith(".fbx"):
             bpy.ops.import_scene.fbx(filepath=object_path)
+        elif object_path.endswith(".obj"):
+            bpy.ops.import_scene.obj(filepath=object_path)
         else:
             raise ValueError(f"Unsupported file type: {object_path}")
         mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
@@ -419,10 +429,10 @@ def transform_from_xyz_to_degree(pos):
     
     return elevation, azimuth, distance
 
-def save_images(object_file: str) -> None:
+def save_images(object_file: str, object_uid: str = None) -> None:
     try:
         """Saves rendered images of the object in the scene."""
-        object_uid = os.path.basename(object_file).split(".")[0]
+        object_uid = object_uid or os.path.basename(object_file).split(".")[0]
         # os.system(f'echo "{object_uid}: loading" >> {args.output_dir}/load.txt')
 
         os.makedirs(args.output_dir, exist_ok=True)
@@ -550,8 +560,8 @@ if __name__ == "__main__":
             local_path = download_object(args.object_path)
         else:
             local_path = args.object_path
-        save_images(local_path)
-        object_uid = os.path.basename(local_path).split(".")[0]
+        save_images(local_path, args.object_uid)
+        object_uid = args.object_uid or os.path.basename(local_path).split(".")[0]
         # os.system(f'echo "{object_uid}: loading2" >> {args.output_dir}/load.txt')
 
         end_i = time.time()

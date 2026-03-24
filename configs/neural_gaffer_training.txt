@@ -5,19 +5,22 @@ gradient_accumulation_steps = 1
 mixed_precision = fp16 
 training_batch_size = 64
 dataloader_num_workers = 32
-num_validation_images = 2
-num_validation_batches = 30
+num_validation_images = 1
+num_validation_batches = 1
+max_train_steps = 1
+validation_steps = 999999
+report_to = tensorboard
 
 
 # --- 训练集真实路径 ---
 
 # 图像：指向包含大量 .png/.jpg 的那个子目录
-train_img_dir = /4T/CXY/Neural_Gaffer/training_data/images/training_img_data_subset
+train_img_dir = /4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset_smoke8
 # 光照：指向 subset 下的 LDR 目录（通常训练用 LDR）
-train_lighting_dir = /4T/CXY/Neural_Gaffer/training_data/lighting/training_lighting_data_subset
+train_lighting_dir = /4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset_smoke8
 
 # --- 验证集真实路径 ---
 # 图像：截图显示是这个 resized 目录
-val_img_dir = /4T/CXY/Neural_Gaffer/validation_data/images/val_rendered_images_resized/validation
+val_img_dir = /4T/CXY/Neural_Gaffer_original/validation_data/images/val_rendered_images_resized_ecommerce_subset_smoke8
 # 光照：指向 val 环境下的 seen_lighting 目录
-val_lighting_dir = /4T/CXY/Neural_Gaffer/validation_data/lighting/val_preprocessed_environment_resized
+val_lighting_dir = /4T/CXY/Neural_Gaffer_original/validation_data/lighting/val_preprocessed_environment_resized_ecommerce_subset_smoke8
