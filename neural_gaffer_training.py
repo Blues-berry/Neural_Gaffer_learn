@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
@@ -1115,6 +1116,29 @@ def decode_latents_to_image(
     return decoded.clamp(-1.0, 1.0)
 
 
+class LatentHighlightProbe(nn.Module):
+    """
+    轻量 latent-space probe：从 pred_x0 latents 预测 1 通道高光分数图。
+
+    设计目标:
+    - 不改主干结构
+    - 只增加极少量 1x1 卷积参数
+    - 让我们先验证“高光是否已经在线性可读的 latent 表征里”
+    """
+
+    def __init__(self, in_channels: int = 4, hidden_channels: int = 16):
+        super().__init__()
+        hidden_channels = max(int(hidden_channels or 0), 1)
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_channels, kernel_size=1),
+            nn.SiLU(),
+            nn.Conv2d(hidden_channels, 1, kernel_size=1),
+        )
+
+    def forward(self, latents: torch.Tensor) -> torch.Tensor:
+        return self.net(latents)
+
+
 def compute_highlight_mask(
     gt_image: torch.Tensor,
     latent_hw: tuple[int, int],
@@ -1180,6 +1204,58 @@ def summarize_highlight_loss_metrics(
         "highlight_mse": highlight_mse,
         "non_highlight_mse": non_highlight_mse,
         "highlight_mse_ratio": highlight_mse_ratio,
+    }
+
+
+def masked_mean(
+    tensor: torch.Tensor,
+    mask: torch.Tensor,
+    eps: float = 1e-8,
+):
+    mask = mask.float()
+    return (tensor.float() * mask).sum() / mask.sum().clamp_min(float(eps))
+
+
+def summarize_latent_highlight_probe_metrics(
+    probe_prob: torch.Tensor,
+    target_score: torch.Tensor,
+    highlight_mask: torch.Tensor,
+    valid_mask: torch.Tensor | None = None,
+):
+    """
+    统计 latent probe 在高光/非高光区域的可分性。
+
+    probe_prob:
+    - probe 预测出来的 [0, 1] 概率图
+    target_score:
+    - 现有高光流水线生成的 soft target
+    highlight_mask:
+    - 二值高光区域，用于 separation 统计
+    """
+    probe_prob = probe_prob.float()
+    target_score = target_score.float()
+    highlight_mask = highlight_mask.float()
+    if valid_mask is None:
+        valid_mask = torch.ones_like(highlight_mask)
+    else:
+        valid_mask = valid_mask.float()
+
+    highlight_mask = highlight_mask * valid_mask
+    non_highlight_mask = (valid_mask - highlight_mask).clamp(min=0.0)
+    binary_prediction = (probe_prob >= 0.5).float()
+
+    highlight_mean = masked_mean(probe_prob, highlight_mask)
+    non_highlight_mean = masked_mean(probe_prob, non_highlight_mask)
+
+    return {
+        "target_mean": masked_mean(target_score, valid_mask),
+        "pred_mean": masked_mean(probe_prob, valid_mask),
+        "pred_highlight_mean": highlight_mean,
+        "pred_non_highlight_mean": non_highlight_mean,
+        "pred_highlight_ratio": highlight_mean / non_highlight_mean.clamp_min(1e-8),
+        "pred_separation": highlight_mean - non_highlight_mean,
+        "pred_binary_fraction": masked_mean(binary_prediction, valid_mask),
+        "brier": masked_mean((probe_prob - target_score).pow(2), valid_mask),
     }
 
 
@@ -1308,7 +1384,10 @@ def build_wandb_run_name(args) -> str:
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     parts = []
     use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
-    use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", False)
+    requested_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", False)
+    use_latent_highlight_probe = getattr(args, "use_latent_highlight_probe", False)
+    replace_image_space_with_latent_probe = getattr(args, "replace_image_space_highlight_loss_with_latent_probe", False)
+    use_image_space_highlight_loss = requested_image_space_highlight_loss and not replace_image_space_with_latent_probe
     random_lighting_condition_prob = getattr(args, "random_lighting_condition_prob", 0.1)
 
     if use_highlight_weighted_loss:
@@ -1316,7 +1395,12 @@ def build_wandb_run_name(args) -> str:
     if use_image_space_highlight_loss:
         parts.append("imgsoft" if getattr(args, "highlight_soft_weighting", False) else "imghard")
     if not use_highlight_weighted_loss and not use_image_space_highlight_loss:
-        parts.append("plain")
+        if use_latent_highlight_probe:
+            parts.append("lponly")
+        else:
+            parts.append("plain")
+    if replace_image_space_with_latent_probe:
+        parts.append("lprepl")
 
     threshold = getattr(args, "highlight_threshold", None)
     extra_weight = getattr(args, "highlight_loss_weight", None)
@@ -1327,6 +1411,9 @@ def build_wandb_run_name(args) -> str:
     local_kernel_size = int(getattr(args, "highlight_local_kernel_size", 15) or 15)
     image_space_constraint_warmup_steps = int(getattr(args, "image_space_constraint_warmup_steps", 0) or 0)
     highlight_loss_weight_warmup_steps = int(getattr(args, "highlight_loss_weight_warmup_steps", 0) or 0)
+    latent_highlight_probe_warmup_steps = int(getattr(args, "latent_highlight_probe_warmup_steps", 0) or 0)
+    latent_highlight_probe_loss_weight = float(getattr(args, "latent_highlight_probe_loss_weight", 0.0) or 0.0)
+    latent_highlight_probe_hidden_channels = int(getattr(args, "latent_highlight_probe_hidden_channels", 16) or 16)
     if getattr(args, "highlight_use_quantile_threshold", False):
         parts.append(f"q{_format_run_float_token(getattr(args, 'highlight_quantile', 0.95), scale=100)}")
         if quantile_blur_sigma > 0.0:
@@ -1341,6 +1428,12 @@ def build_wandb_run_name(args) -> str:
         parts.append(f"w{extra_weight:g}")
     if gamma is not None and getattr(args, "highlight_soft_weighting", False):
         parts.append(f"g{gamma:g}")
+    if use_latent_highlight_probe:
+        parts.append(f"lp{latent_highlight_probe_loss_weight:g}")
+        if latent_highlight_probe_hidden_channels != 16:
+            parts.append(f"lph{latent_highlight_probe_hidden_channels}")
+        if getattr(args, "latent_highlight_probe_detach_input", False):
+            parts.append("lpsg")
     if image_space_constraint_warmup_steps > 0 or highlight_loss_weight_warmup_steps > 0:
         if image_space_constraint_warmup_steps == highlight_loss_weight_warmup_steps:
             parts.append(f"wu{int(image_space_constraint_warmup_steps / 1000)}k")
@@ -1349,6 +1442,8 @@ def build_wandb_run_name(args) -> str:
                 parts.append(f"iwu{int(image_space_constraint_warmup_steps / 1000)}k")
             if highlight_loss_weight_warmup_steps > 0:
                 parts.append(f"hwu{int(highlight_loss_weight_warmup_steps / 1000)}k")
+    if use_latent_highlight_probe and latent_highlight_probe_warmup_steps > 0:
+        parts.append(f"lpwu{int(latent_highlight_probe_warmup_steps / 1000)}k")
     if getattr(args, "max_train_steps", None):
         parts.append(f"{int(args.max_train_steps / 1000)}k")
 
@@ -1438,6 +1533,8 @@ def main(args):
     feature_extractor = None #CLIPFeatureExtractor.from_pretrained(args.pretrained_model_name_or_path, subfolder="feature_extractor", revision=args.revision)
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", **loading_kwargs)
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet", **loading_kwargs)
+    use_latent_highlight_probe = getattr(args, "use_latent_highlight_probe", False)
+    latent_highlight_probe = None
     
     
     vae.train()
@@ -1454,6 +1551,13 @@ def main(args):
     unet.conv_in = conv_in_16
     unet.requires_grad_(True)
     unet.train()
+    if use_latent_highlight_probe:
+        latent_highlight_probe = LatentHighlightProbe(
+            in_channels=getattr(vae.config, "latent_channels", 4),
+            hidden_channels=getattr(args, "latent_highlight_probe_hidden_channels", 16),
+        )
+        latent_highlight_probe.requires_grad_(True)
+        latent_highlight_probe.train()
 
 
 
@@ -1530,7 +1634,14 @@ def main(args):
 
     # Optimizer creation
     optimizer = optimizer_class(
-        [{"params": unet.parameters(), "lr": args.learning_rate}],
+        [
+            {"params": unet.parameters(), "lr": args.learning_rate},
+            *(
+                [{"params": latent_highlight_probe.parameters(), "lr": args.learning_rate}]
+                if use_latent_highlight_probe and latent_highlight_probe is not None
+                else []
+            ),
+        ],
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon
@@ -1542,7 +1653,19 @@ def main(args):
     # - 默认开启 image-space 高光辅助约束
     # - 默认关闭 latent/noise-space 的高光重加权
     use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
-    use_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", True)
+    requested_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", True)
+    replace_image_space_highlight_loss_with_latent_probe = getattr(
+        args,
+        "replace_image_space_highlight_loss_with_latent_probe",
+        False,
+    )
+    if replace_image_space_highlight_loss_with_latent_probe and not use_latent_highlight_probe:
+        raise ValueError(
+            "replace_image_space_highlight_loss_with_latent_probe=true requires use_latent_highlight_probe=true."
+        )
+    use_image_space_highlight_loss = (
+        requested_image_space_highlight_loss and not replace_image_space_highlight_loss_with_latent_probe
+    )
     if use_highlight_weighted_loss:
         logger.info(
             "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s relative_mode=%s local_kernel=%s relative_eps=%s",
@@ -1582,8 +1705,24 @@ def main(args):
             getattr(args, "highlight_local_kernel_size", 15),
             getattr(args, "highlight_relative_eps", 1e-4),
         )
+    elif requested_image_space_highlight_loss and replace_image_space_highlight_loss_with_latent_probe:
+        logger.info(
+            "Image-space highlight constraint requested but replaced by latent-space highlight probe. "
+            "The VAE decode-backprop branch is disabled for this run."
+        )
     else:
         logger.info("Image-space highlight constraint disabled")
+    if use_latent_highlight_probe:
+        logger.info(
+            "Latent-space highlight probe enabled with loss_weight=%s warmup_steps=%s hidden_channels=%s detach_input=%s replace_image_space=%s",
+            getattr(args, "latent_highlight_probe_loss_weight", 0.05),
+            getattr(args, "latent_highlight_probe_warmup_steps", 0),
+            getattr(args, "latent_highlight_probe_hidden_channels", 16),
+            getattr(args, "latent_highlight_probe_detach_input", False),
+            replace_image_space_highlight_loss_with_latent_probe,
+        )
+    else:
+        logger.info("Latent-space highlight probe disabled")
     logger.info(
         "Training random area-light condition probability=%s",
         getattr(args, "random_lighting_condition_prob", 0.1),
@@ -1614,6 +1753,8 @@ def main(args):
             print("model size(MB): ", sum(p.numel() * p.element_size() for p in model.parameters()) / 1024 / 1024)
 
     print_model_info(unet)
+    if latent_highlight_probe is not None:
+        print_model_info(latent_highlight_probe)
     print_model_info(vae)
     print_model_info(image_encoder)
     
@@ -1786,9 +1927,24 @@ def main(args):
 
     
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, train_log_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, train_log_dataloader, lr_scheduler
-    )
+    if latent_highlight_probe is not None:
+        unet, latent_highlight_probe, optimizer, train_dataloader, train_log_dataloader, lr_scheduler = accelerator.prepare(
+            unet, latent_highlight_probe, optimizer, train_dataloader, train_log_dataloader, lr_scheduler
+        )
+    else:
+        unet, optimizer, train_dataloader, train_log_dataloader, lr_scheduler = accelerator.prepare(
+            unet, optimizer, train_dataloader, train_log_dataloader, lr_scheduler
+        )
+
+    trainable_models = [unet]
+    if latent_highlight_probe is not None:
+        trainable_models.append(latent_highlight_probe)
+
+    def iter_trainable_parameters():
+        for model in trainable_models:
+            yield from model.parameters()
+
+    accumulate_models = tuple(trainable_models)
     
 
     
@@ -1927,8 +2083,9 @@ def main(args):
             skip_reason = None
             train_loss_scalar = None
             image_space_aux_skipped = False
+            latent_probe_skipped = False
             
-            with accelerator.accumulate(unet):
+            with accelerator.accumulate(*accumulate_models):
                 # Convert images to latent space
                 input_image = batch["image_cond"].to(dtype=weight_dtype)
                 relighting_image_group1 = batch["image_target"].to(dtype=weight_dtype)
@@ -2019,10 +2176,12 @@ def main(args):
                 # - 标准 diffusion 训练里最核心的逐像素噪声 MSE
                 # - 形状与 model_pred / target 相同
                 diffusion_per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                latent_highlight_mask = compute_highlight_mask(
+                latent_highlight_score, latent_highlight_mask, latent_foreground_mask = compute_highlight_score_map(
                     gt_image=gt_image,
                     latent_hw=diffusion_per_pixel_loss.shape[-2:],
                     threshold=getattr(args, "highlight_threshold", 0.8),
+                    soft_weighting=getattr(args, "highlight_soft_weighting", False),
+                    gamma=getattr(args, "highlight_gamma", 2.0),
                     background_threshold=getattr(args, "foreground_background_threshold", 0.98),
                     use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
                     highlight_quantile=getattr(args, "highlight_quantile", 0.95),
@@ -2032,12 +2191,19 @@ def main(args):
                     relative_mode=getattr(args, "highlight_relative_mode", "none"),
                     local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
                     relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
-                ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
-                latent_foreground_mask = compute_foreground_mask(
-                    gt_image=gt_image,
-                    latent_hw=diffusion_per_pixel_loss.shape[-2:],
-                    background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
+                )
+                latent_highlight_score = latent_highlight_score.to(
+                    device=diffusion_per_pixel_loss.device,
+                    dtype=diffusion_per_pixel_loss.dtype,
+                )
+                latent_highlight_mask = latent_highlight_mask.to(
+                    device=diffusion_per_pixel_loss.device,
+                    dtype=diffusion_per_pixel_loss.dtype,
+                )
+                latent_foreground_mask = latent_foreground_mask.to(
+                    device=diffusion_per_pixel_loss.device,
+                    dtype=diffusion_per_pixel_loss.dtype,
+                )
                 latent_highlight_metric_tensors = summarize_highlight_loss_metrics(
                     diffusion_per_pixel_loss,
                     latent_highlight_mask,
@@ -2055,6 +2221,11 @@ def main(args):
                     getattr(args, "image_space_constraint_weight", 0.1),
                     global_step=global_step,
                     warmup_steps=getattr(args, "image_space_constraint_warmup_steps", 0),
+                )
+                effective_latent_probe_loss_weight = get_warmup_scaled_weight(
+                    getattr(args, "latent_highlight_probe_loss_weight", 0.05),
+                    global_step=global_step,
+                    warmup_steps=getattr(args, "latent_highlight_probe_warmup_steps", 0),
                 )
 
                 weight_map = None
@@ -2088,18 +2259,51 @@ def main(args):
                     diffusion_loss = diffusion_per_pixel_loss.mean()
 
                 image_space_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
+                latent_probe_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
                 image_weight_map = None
                 active_highlight_metric_tensors = latent_highlight_metric_tensors
                 highlight_logs_prefix = ""
+                latent_probe_metric_tensors = None
+                pred_x0_latents = None
+                need_pred_x0_latents = use_image_space_highlight_loss or use_latent_highlight_probe
 
-                if use_image_space_highlight_loss:
+                if need_pred_x0_latents:
                     pred_x0_latents = predict_x0_from_model_pred(
                         noise_scheduler,
                         model_pred.float(),
                         noisy_latents.float(),
                         timesteps,
                     )
-                    if tensor_is_finite(pred_x0_latents):
+                if use_latent_highlight_probe:
+                    if pred_x0_latents is not None and tensor_is_finite(pred_x0_latents):
+                        probe_input = pred_x0_latents.detach() if getattr(args, "latent_highlight_probe_detach_input", False) else pred_x0_latents
+                        probe_logits = latent_highlight_probe(probe_input.to(dtype=weight_dtype))
+                        probe_target = latent_highlight_score.to(device=probe_logits.device, dtype=probe_logits.dtype)
+                        probe_valid_mask = latent_foreground_mask.to(device=probe_logits.device, dtype=probe_logits.dtype)
+                        probe_per_pixel_loss = F.binary_cross_entropy_with_logits(
+                            probe_logits.float(),
+                            probe_target.float(),
+                            reduction="none",
+                        )
+                        latent_probe_loss = masked_mean(probe_per_pixel_loss, probe_valid_mask)
+                        latent_probe_prob = torch.sigmoid(probe_logits.float())
+                        latent_probe_metric_tensors = summarize_latent_highlight_probe_metrics(
+                            latent_probe_prob,
+                            probe_target,
+                            latent_highlight_mask.to(device=latent_probe_prob.device, dtype=latent_probe_prob.dtype),
+                            valid_mask=probe_valid_mask,
+                        )
+                    else:
+                        latent_probe_skipped = True
+                        logger.warning(
+                            "Skipping latent-space highlight probe at global_step=%s epoch=%s batch_step=%s because pred_x0 latents are non-finite.",
+                            global_step,
+                            epoch,
+                            step,
+                        )
+
+                if use_image_space_highlight_loss:
+                    if pred_x0_latents is not None and tensor_is_finite(pred_x0_latents):
                         pred_x0_image = decode_latents_to_image(
                             vae,
                             pred_x0_latents,
@@ -2170,7 +2374,11 @@ def main(args):
                             step,
                         )
 
-                loss = diffusion_loss + effective_image_space_constraint_weight * image_space_loss
+                loss = (
+                    diffusion_loss
+                    + effective_image_space_constraint_weight * image_space_loss
+                    + effective_latent_probe_loss_weight * latent_probe_loss
+                )
 
                 if not tensor_is_finite(model_pred):
                     skipped_update = True
@@ -2181,6 +2389,9 @@ def main(args):
                 elif not tensor_is_finite(image_space_loss):
                     skipped_update = True
                     skip_reason = "non_finite_image_space_loss"
+                elif not tensor_is_finite(latent_probe_loss):
+                    skipped_update = True
+                    skip_reason = "non_finite_latent_probe_loss"
                 elif not tensor_is_finite(loss):
                     skipped_update = True
                     skip_reason = "non_finite_total_loss"
@@ -2219,6 +2430,22 @@ def main(args):
                             "train_guard/image_space_aux_skipped": int(image_space_aux_skipped),
                         }
                     )
+                    if use_latent_highlight_probe:
+                        highlight_logs.update(
+                            {
+                                "latent_probe/loss": accelerator.reduce(latent_probe_loss.detach(), reduction="mean").item(),
+                                "latent_probe/loss_weighted": accelerator.reduce(
+                                    (effective_latent_probe_loss_weight * latent_probe_loss).detach(),
+                                    reduction="mean",
+                                ).item(),
+                                "latent_probe/effective_loss_weight": effective_latent_probe_loss_weight,
+                                "latent_probe/warmup_scale": linear_warmup_scale(
+                                    global_step,
+                                    getattr(args, "latent_highlight_probe_warmup_steps", 0),
+                                ),
+                                "train_guard/latent_probe_skipped": int(latent_probe_skipped),
+                            }
+                        )
                     if use_highlight_weighted_loss and weight_map is not None:
                         highlight_logs = {
                             **highlight_logs,
@@ -2237,6 +2464,13 @@ def main(args):
                                 reduction="mean",
                             ).item(),
                         }
+                    if latent_probe_metric_tensors is not None:
+                        highlight_logs.update(
+                            {
+                                f"latent_probe/{key}": accelerator.reduce(value.detach(), reduction="mean").item()
+                                for key, value in latent_probe_metric_tensors.items()
+                            }
+                        )
                     sanitized_highlight_logs, skipped_highlight_logs = sanitize_log_dict(highlight_logs)
                     if skipped_highlight_logs:
                         logger.warning(
@@ -2256,14 +2490,14 @@ def main(args):
                     if accelerator.sync_gradients:
                         accelerator.unscale_gradients(optimizer=optimizer)
 
-                    if model_has_non_finite_gradients(unet.parameters()):
+                    if model_has_non_finite_gradients(iter_trainable_parameters()):
                         skipped_update = True
                         skip_reason = "non_finite_gradients"
                         optimizer.zero_grad(set_to_none=args.set_grads_to_none)
                         reset_amp_scaler_after_skipped_step(accelerator)
                     else:
                         if accelerator.sync_gradients and args.max_grad_norm is not None and args.max_grad_norm > 0:
-                            torch.nn.utils.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                            torch.nn.utils.clip_grad_norm_(list(iter_trainable_parameters()), args.max_grad_norm)
                         optimizer.step()
                         lr_scheduler.step()
                         optimizer.zero_grad(set_to_none=args.set_grads_to_none)
@@ -2285,6 +2519,8 @@ def main(args):
                     "train_guard/non_finite_step_streak": non_finite_step_streak,
                     "train_guard/image_space_aux_skipped_step": int(image_space_aux_skipped),
                 }
+                if use_latent_highlight_probe:
+                    guard_logs["train_guard/latent_probe_skipped_step"] = int(latent_probe_skipped)
                 sanitized_guard_logs, skipped_guard_logs = sanitize_log_dict(guard_logs)
                 if skipped_guard_logs:
                     logger.warning(

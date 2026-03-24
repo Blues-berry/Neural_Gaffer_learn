@@ -392,6 +392,42 @@ def parse_args(input_args=None):
         help="Small epsilon used by ratio-based relative highlight detection to avoid division by zero.",
     )
     parser.add_argument(
+        "--use_latent_highlight_probe",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=False,
+        help="Enable a lightweight latent-space highlight probe head that predicts the foreground highlight score map from pred_x0 latents.",
+    )
+    parser.add_argument(
+        "--latent_highlight_probe_loss_weight",
+        type=float,
+        default=0.05,
+        help="Loss weight for the latent-space highlight probe supervision.",
+    )
+    parser.add_argument(
+        "--latent_highlight_probe_warmup_steps",
+        type=int,
+        default=0,
+        help="Linear warmup steps for the latent-space highlight probe loss weight.",
+    )
+    parser.add_argument(
+        "--latent_highlight_probe_hidden_channels",
+        type=int,
+        default=16,
+        help="Hidden channel width of the lightweight latent-space highlight probe head.",
+    )
+    parser.add_argument(
+        "--latent_highlight_probe_detach_input",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=False,
+        help="If enabled, detach pred_x0 latents before feeding them to the latent-space highlight probe so the probe does not regularize the main UNet.",
+    )
+    parser.add_argument(
+        "--replace_image_space_highlight_loss_with_latent_probe",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=False,
+        help="Disable the expensive image-space decode-backprop branch and use the latent-space highlight probe as its replacement.",
+    )
+    parser.add_argument(
         "--foreground_background_threshold",
         type=float,
         default=0.98,
