@@ -249,6 +249,16 @@ def parse_args(input_args=None):
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
+        "--optimizer_type",
+        type=str,
+        default="adamw",
+        help=(
+            "Optimizer to use. Supported values: "
+            '["adamw", "adamw_8bit", "adan", "madan", "adan_8bit", "madan_8bit"]. '
+            "Note: --use_8bit_adam remains as a backward-compatible alias for adamw_8bit."
+        ),
+    )
+    parser.add_argument(
         "--dataloader_num_workers",
         type=int,
         default=1,
@@ -259,6 +269,7 @@ def parse_args(input_args=None):
 
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_beta3", type=float, default=0.99, help="The beta3 parameter for the Adan optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
@@ -426,6 +437,36 @@ def parse_args(input_args=None):
         type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
         default=False,
         help="Disable the expensive image-space decode-backprop branch and use the latent-space highlight probe as its replacement.",
+    )
+    parser.add_argument(
+        "--use_hybrid_probe_distillation",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=False,
+        help="Keep the image-space highlight branch as an early teacher while training the latent probe, then gradually transfer part of the auxiliary supervision from image-space loss to the probe.",
+    )
+    parser.add_argument(
+        "--hybrid_probe_transition_start_step",
+        type=int,
+        default=0,
+        help="Global step at which hybrid probe distillation starts reducing the image-space loss weight and increasing the probe weight.",
+    )
+    parser.add_argument(
+        "--hybrid_probe_transition_end_step",
+        type=int,
+        default=0,
+        help="Global step at which the hybrid probe distillation schedule reaches its final image/probe weighting mix.",
+    )
+    parser.add_argument(
+        "--hybrid_probe_final_image_space_scale",
+        type=float,
+        default=0.25,
+        help="Final multiplicative scale applied to the image-space highlight loss weight after hybrid probe distillation finishes.",
+    )
+    parser.add_argument(
+        "--hybrid_probe_final_probe_scale",
+        type=float,
+        default=2.0,
+        help="Final multiplicative scale applied to the latent probe loss weight after hybrid probe distillation finishes.",
     )
     parser.add_argument(
         "--foreground_background_threshold",

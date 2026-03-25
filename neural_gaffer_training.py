@@ -151,6 +151,90 @@ def reset_amp_scaler_after_skipped_step(accelerator: Accelerator):
     scaler.update()
 
 
+def resolve_optimizer_type(args) -> str:
+    optimizer_type = str(getattr(args, "optimizer_type", "adamw")).strip().lower()
+    if getattr(args, "use_8bit_adam", False) and optimizer_type == "adamw":
+        optimizer_type = "adamw_8bit"
+
+    alias_map = {
+        "madan": "adan",
+        "madan_8bit": "adan_8bit",
+    }
+    optimizer_type = alias_map.get(optimizer_type, optimizer_type)
+    supported_optimizer_types = {"adamw", "adamw_8bit", "adan", "adan_8bit"}
+    if optimizer_type not in supported_optimizer_types:
+        raise ValueError(
+            f"Unsupported optimizer_type={optimizer_type!r}. "
+            "Choose from ['adamw', 'adamw_8bit', 'adan', 'madan', 'adan_8bit', 'madan_8bit']."
+        )
+
+    return optimizer_type
+
+
+def build_optimizer(args, parameter_groups):
+    optimizer_type = resolve_optimizer_type(args)
+
+    if optimizer_type == "adamw":
+        return torch.optim.AdamW(
+            parameter_groups,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+
+    if optimizer_type == "adamw_8bit":
+        try:
+            import bitsandbytes as bnb
+        except ImportError as exc:
+            raise ImportError(
+                "To use optimizer_type=adamw_8bit (or --use_8bit_adam), please install bitsandbytes: "
+                "`pip install bitsandbytes`."
+            ) from exc
+
+        return bnb.optim.AdamW8bit(
+            parameter_groups,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+
+    if optimizer_type == "adan":
+        adan_cls = None
+        import_errors = []
+        try:
+            from pytorch_optimizer import Adan as adan_cls
+        except ImportError as exc:
+            import_errors.append(f"pytorch_optimizer: {exc}")
+        if adan_cls is None:
+            try:
+                from adan import Adan as adan_cls
+            except ImportError as exc:
+                import_errors.append(f"adan: {exc}")
+
+        if adan_cls is None:
+            raise ImportError(
+                "To use optimizer_type=adan/madan, install an Adan implementation, e.g. "
+                "`pip install pytorch-optimizer`. "
+                f"Tried imports: {', '.join(import_errors)}"
+            )
+
+        return adan_cls(
+            parameter_groups,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2, args.adam_beta3),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+
+    if optimizer_type == "adan_8bit":
+        raise NotImplementedError(
+            "optimizer_type=adan_8bit/madan_8bit is not wired because the current training stack does not include "
+            "a native 8-bit Adan optimizer backend. Use optimizer_type=adan (32-bit) or adamw_8bit instead."
+        )
+
+    raise AssertionError(f"Unhandled optimizer_type={optimizer_type!r}")
+
+
 def sanitize_log_dict(logs: dict) -> tuple[dict, dict]:
     sanitized = {}
     skipped = {}
@@ -187,6 +271,23 @@ def linear_warmup_scale(global_step: int, warmup_steps: int) -> float:
 
 def get_warmup_scaled_weight(base_weight: float, global_step: int, warmup_steps: int) -> float:
     return float(base_weight) * linear_warmup_scale(global_step, warmup_steps)
+
+
+def linear_transition_progress(global_step: int, start_step: int, end_step: int) -> float:
+    start_step = int(start_step or 0)
+    end_step = int(end_step or 0)
+    if end_step <= start_step:
+        return 1.0 if global_step >= max(start_step, end_step) else 0.0
+    if global_step <= start_step:
+        return 0.0
+    if global_step >= end_step:
+        return 1.0
+    return float((global_step - start_step) / float(end_step - start_step))
+
+
+def blend_schedule_scale(progress: float, final_scale: float) -> float:
+    progress = float(min(max(progress, 0.0), 1.0))
+    return 1.0 + (float(final_scale) - 1.0) * progress
 
 
 def extract_validation_psnr_score(step_log: dict) -> tuple[float | None, list[str]]:
@@ -1387,6 +1488,7 @@ def build_wandb_run_name(args) -> str:
     requested_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", False)
     use_latent_highlight_probe = getattr(args, "use_latent_highlight_probe", False)
     replace_image_space_with_latent_probe = getattr(args, "replace_image_space_highlight_loss_with_latent_probe", False)
+    use_hybrid_probe_distillation = getattr(args, "use_hybrid_probe_distillation", False)
     use_image_space_highlight_loss = requested_image_space_highlight_loss and not replace_image_space_with_latent_probe
     random_lighting_condition_prob = getattr(args, "random_lighting_condition_prob", 0.1)
 
@@ -1401,6 +1503,16 @@ def build_wandb_run_name(args) -> str:
             parts.append("plain")
     if replace_image_space_with_latent_probe:
         parts.append("lprepl")
+    if use_hybrid_probe_distillation:
+        hybrid_start_step = int(getattr(args, "hybrid_probe_transition_start_step", 0) or 0)
+        hybrid_end_step = int(getattr(args, "hybrid_probe_transition_end_step", 0) or 0)
+        parts.append(f"hyb{int(hybrid_start_step / 1000)}to{int(hybrid_end_step / 1000)}k")
+        parts.append(
+            f"his{_format_run_float_token(getattr(args, 'hybrid_probe_final_image_space_scale', 0.25), scale=100)}"
+        )
+        parts.append(
+            f"hps{_format_run_float_token(getattr(args, 'hybrid_probe_final_probe_scale', 2.0), scale=100)}"
+        )
 
     threshold = getattr(args, "highlight_threshold", None)
     extra_weight = getattr(args, "highlight_loss_weight", None)
@@ -1619,21 +1731,9 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.training_batch_size * accelerator.num_processes
         )
 
-    # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
-    if args.use_8bit_adam:
-        try:
-            import bitsandbytes as bnb
-        except ImportError:
-            raise ImportError(
-                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
-            )
-
-        optimizer_class = bnb.optim.AdamW8bit
-    else:
-        optimizer_class = torch.optim.AdamW
-
     # Optimizer creation
-    optimizer = optimizer_class(
+    optimizer = build_optimizer(
+        args,
         [
             {"params": unet.parameters(), "lr": args.learning_rate},
             *(
@@ -1642,9 +1742,6 @@ def main(args):
                 else []
             ),
         ],
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon
     )
 
 
@@ -1659,10 +1756,27 @@ def main(args):
         "replace_image_space_highlight_loss_with_latent_probe",
         False,
     )
+    use_hybrid_probe_distillation = getattr(args, "use_hybrid_probe_distillation", False)
     if replace_image_space_highlight_loss_with_latent_probe and not use_latent_highlight_probe:
         raise ValueError(
             "replace_image_space_highlight_loss_with_latent_probe=true requires use_latent_highlight_probe=true."
         )
+    if replace_image_space_highlight_loss_with_latent_probe and use_hybrid_probe_distillation:
+        raise ValueError(
+            "use_hybrid_probe_distillation=true cannot be combined with replace_image_space_highlight_loss_with_latent_probe=true."
+        )
+    if use_hybrid_probe_distillation and not requested_image_space_highlight_loss:
+        raise ValueError(
+            "use_hybrid_probe_distillation=true requires use_image_space_highlight_loss=true."
+        )
+    if use_hybrid_probe_distillation and not use_latent_highlight_probe:
+        raise ValueError(
+            "use_hybrid_probe_distillation=true requires use_latent_highlight_probe=true."
+        )
+    if float(getattr(args, "hybrid_probe_final_image_space_scale", 0.25) or 0.25) < 0.0:
+        raise ValueError("hybrid_probe_final_image_space_scale must be non-negative.")
+    if float(getattr(args, "hybrid_probe_final_probe_scale", 2.0) or 2.0) < 0.0:
+        raise ValueError("hybrid_probe_final_probe_scale must be non-negative.")
     use_image_space_highlight_loss = (
         requested_image_space_highlight_loss and not replace_image_space_highlight_loss_with_latent_probe
     )
@@ -1723,6 +1837,16 @@ def main(args):
         )
     else:
         logger.info("Latent-space highlight probe disabled")
+    if use_hybrid_probe_distillation:
+        logger.info(
+            "Hybrid probe distillation enabled with transition_start_step=%s transition_end_step=%s final_image_space_scale=%s final_probe_scale=%s",
+            getattr(args, "hybrid_probe_transition_start_step", 0),
+            getattr(args, "hybrid_probe_transition_end_step", 0),
+            getattr(args, "hybrid_probe_final_image_space_scale", 0.25),
+            getattr(args, "hybrid_probe_final_probe_scale", 2.0),
+        )
+    else:
+        logger.info("Hybrid probe distillation disabled")
     logger.info(
         "Training random area-light condition probability=%s",
         getattr(args, "random_lighting_condition_prob", 0.1),
@@ -2227,6 +2351,28 @@ def main(args):
                     global_step=global_step,
                     warmup_steps=getattr(args, "latent_highlight_probe_warmup_steps", 0),
                 )
+                hybrid_transition_progress = 0.0
+                hybrid_image_space_scale = 1.0
+                hybrid_probe_scale = 1.0
+                if use_hybrid_probe_distillation:
+                    hybrid_transition_progress = linear_transition_progress(
+                        global_step,
+                        getattr(args, "hybrid_probe_transition_start_step", 0),
+                        getattr(args, "hybrid_probe_transition_end_step", 0),
+                    )
+                    hybrid_image_space_scale = blend_schedule_scale(
+                        hybrid_transition_progress,
+                        getattr(args, "hybrid_probe_final_image_space_scale", 0.25),
+                    )
+                    hybrid_probe_scale = blend_schedule_scale(
+                        hybrid_transition_progress,
+                        getattr(args, "hybrid_probe_final_probe_scale", 2.0),
+                    )
+                    effective_image_space_constraint_weight *= hybrid_image_space_scale
+                    effective_latent_probe_loss_weight *= hybrid_probe_scale
+                run_image_space_highlight_loss = (
+                    use_image_space_highlight_loss and effective_image_space_constraint_weight > 0.0
+                )
 
                 weight_map = None
                 if use_highlight_weighted_loss:
@@ -2265,7 +2411,7 @@ def main(args):
                 highlight_logs_prefix = ""
                 latent_probe_metric_tensors = None
                 pred_x0_latents = None
-                need_pred_x0_latents = use_image_space_highlight_loss or use_latent_highlight_probe
+                need_pred_x0_latents = run_image_space_highlight_loss or use_latent_highlight_probe
 
                 if need_pred_x0_latents:
                     pred_x0_latents = predict_x0_from_model_pred(
@@ -2302,7 +2448,7 @@ def main(args):
                             step,
                         )
 
-                if use_image_space_highlight_loss:
+                if run_image_space_highlight_loss:
                     if pred_x0_latents is not None and tensor_is_finite(pred_x0_latents):
                         pred_x0_image = decode_latents_to_image(
                             vae,
@@ -2418,6 +2564,11 @@ def main(args):
                                 reduction="mean",
                             ).item(),
                             "image_space/effective_constraint_weight": effective_image_space_constraint_weight,
+                            "image_space/base_constraint_weight": get_warmup_scaled_weight(
+                                getattr(args, "image_space_constraint_weight", 0.1),
+                                global_step=global_step,
+                                warmup_steps=getattr(args, "image_space_constraint_warmup_steps", 0),
+                            ),
                             "highlight/effective_loss_weight": effective_highlight_loss_weight,
                             "image_space/constraint_warmup_scale": linear_warmup_scale(
                                 global_step,
@@ -2428,6 +2579,12 @@ def main(args):
                                 getattr(args, "highlight_loss_weight_warmup_steps", 0),
                             ),
                             "train_guard/image_space_aux_skipped": int(image_space_aux_skipped),
+                            "train_guard/image_space_scheduled_off": int(
+                                use_image_space_highlight_loss and not run_image_space_highlight_loss
+                            ),
+                            "hybrid_probe/transition_progress": hybrid_transition_progress,
+                            "hybrid_probe/image_space_scale": hybrid_image_space_scale,
+                            "hybrid_probe/probe_scale": hybrid_probe_scale,
                         }
                     )
                     if use_latent_highlight_probe:
@@ -2439,6 +2596,11 @@ def main(args):
                                     reduction="mean",
                                 ).item(),
                                 "latent_probe/effective_loss_weight": effective_latent_probe_loss_weight,
+                                "latent_probe/base_loss_weight": get_warmup_scaled_weight(
+                                    getattr(args, "latent_highlight_probe_loss_weight", 0.05),
+                                    global_step=global_step,
+                                    warmup_steps=getattr(args, "latent_highlight_probe_warmup_steps", 0),
+                                ),
                                 "latent_probe/warmup_scale": linear_warmup_scale(
                                     global_step,
                                     getattr(args, "latent_highlight_probe_warmup_steps", 0),

@@ -2,7 +2,7 @@ nvidia# PI-Light 对 Neural_Gaffer 的启发式改进建议
 
 ## 1. 文档目的
 
-本文档用于回答一个非常具体的问题:
+本文档用于回答一个非常具体的问题: 
 
 - `PI-LIGHT: Physics-Inspired Diffusion for Full-Image Relighting`
   里有哪些设计思路值得借鉴?
