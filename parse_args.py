@@ -10,6 +10,16 @@ def parse_bool(value):
 
 def parse_args(input_args=None):
     parser = configargparse.ArgumentParser(description="Simple example of a Neural Gaffer training script.")
+    parser.add_argument(
+        '--method_config',
+        is_config_file=True,
+        help='method-level config file path'
+    )
+    parser.add_argument(
+        '--data_config',
+        is_config_file=True,
+        help='data-level config file path'
+    )
     parser.add_argument('--config', is_config_file=True,
                         help='config file path')    
     parser.add_argument(

@@ -18,11 +18,15 @@ import torch.nn.functional as F
 
 from tqdm import tqdm
 import os
+from dataset.foreground_mask_utils import fallback_white_background_mask, resolve_foreground_mask
+
+
 class NeuralGafferTrainingDataLoader():
     def __init__(self, 
                  lighting_dir_train, img_dir_train,  
                  lighting_dir_val, img_dir_val, 
-                 batch_size, total_view=12, lighting_per_view=8, num_workers=4):
+                 batch_size, total_view=12, lighting_per_view=8, num_workers=4,
+                 foreground_background_threshold: float = 0.98):
         # 这个类只是一个轻量封装，负责根据训练 / 验证目录构建 dataloader。
         # 真正决定“一个样本长什么样”的逻辑在下面的 NeuralGafferTrainingData 里。
         # super().__init__(self, img_dir, batch_size, total_view, num_workers)
@@ -36,6 +40,7 @@ class NeuralGafferTrainingDataLoader():
         self.num_workers = num_workers
         self.total_view = total_view
         self.lighting_per_view = lighting_per_view
+        self.foreground_background_threshold = float(foreground_background_threshold)
         
         image_transforms = [torchvision.transforms.Resize((256, 256)),
                             transforms.ToTensor(),
@@ -52,7 +57,8 @@ class NeuralGafferTrainingDataLoader():
                                         total_view=self.total_view, lighting_per_view=self.lighting_per_view,
                                         validation=False,
                                         relighting_only=True,
-                                        image_transforms=self.image_transforms)
+                                        image_transforms=self.image_transforms,
+                                        foreground_background_threshold=self.foreground_background_threshold)
         # sampler = DistributedSampler(dataset)
         return wds.WebLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
                              # sampler=sampler)
@@ -66,7 +72,8 @@ class NeuralGafferTrainingDataLoader():
                                 total_view=self.total_view, lighting_per_view=4,
                                 validation=True,
                                 relighting_only=True,
-                                image_transforms=self.image_transforms)
+                                image_transforms=self.image_transforms,
+                                foreground_background_threshold=self.foreground_background_threshold)
         # sampler = DistributedSampler(dataset)
         
         return wds.WebLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
@@ -84,6 +91,7 @@ class NeuralGafferTrainingData(Dataset):
                  image_preprocessed = False,
                  dataset_type=None,
                  random_lighting_condition_prob: float = 0.1,
+                 foreground_background_threshold: float = 0.98,
                  ) -> None:
         """
         Neural Gaffer 训练数据集。
@@ -110,6 +118,7 @@ class NeuralGafferTrainingData(Dataset):
         self.preprocessed_lighting_dir = lighting_dir
         self.dataset_type = dataset_type
         self.random_lighting_condition_prob = float(random_lighting_condition_prob)
+        self.foreground_background_threshold = float(foreground_background_threshold)
 
         # if rank == 0:
         # total_objects = len(self.paths)
@@ -243,6 +252,35 @@ class NeuralGafferTrainingData(Dataset):
         img = img[:, :, :3] * mask[:, :, None] + np.array(color) * (1 - mask[:, :, None])
         img = Image.fromarray(np.uint8(img[:, :, :3] * 255.))
         return img
+
+    def load_foreground_mask(self, object_dir, view_idx, reference_image_path, target_hw):
+        resolved_mask, _ = resolve_foreground_mask(
+            object_dir,
+            view_idx=view_idx,
+            reference_image_path=reference_image_path,
+        )
+        if resolved_mask is None:
+            reference_array = plt.imread(reference_image_path)
+            resolved_mask = fallback_white_background_mask(
+                reference_array[..., :3],
+                background_threshold=self.foreground_background_threshold,
+            )
+
+        foreground_mask = torch.from_numpy(np.asarray(resolved_mask, dtype=np.float32))
+        if foreground_mask.ndim == 2:
+            foreground_mask = foreground_mask.unsqueeze(0)
+        elif foreground_mask.ndim == 3:
+            foreground_mask = foreground_mask[..., 0].unsqueeze(0)
+        else:
+            raise ValueError(f"Unexpected foreground mask shape for {reference_image_path}: {foreground_mask.shape}")
+
+        foreground_mask = F.interpolate(
+            foreground_mask.unsqueeze(0),
+            size=target_hw,
+            mode="nearest",
+        ).squeeze(0)
+        foreground_mask = (foreground_mask > 0.5).float()
+        return foreground_mask
     
 
 
@@ -309,6 +347,12 @@ class NeuralGafferTrainingData(Dataset):
         # 2. 读取目标图，也就是模型应该学会生成的 GT。
         target_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (index_target, lighting_idx_target)))[0]
         target_im = self.process_im(self.load_im(target_image_path))
+        target_foreground_mask = self.load_foreground_mask(
+            filename,
+            view_idx=index_target,
+            reference_image_path=target_image_path,
+            target_hw=target_im.shape[-2:],
+        )
 
         
         # 目标图文件名里已经包含环境图名字，因此可以反推出对应的环境图文件。
@@ -393,11 +437,13 @@ class NeuralGafferTrainingData(Dataset):
         data["image_cond"] = cond_im
         data["envir_map_target_ldr"] = envir_map_target_ldr
         data["envir_map_target_hdr"] = envir_map_target_hdr
+        data["foreground_mask_target"] = target_foreground_mask
         
         if not self.validation:
             data["image_another_target"] = another_target_im
             data["envir_map_another_target_ldr"] = another_envir_map_target_ldr
             data["envir_map_another_target_hdr"] = another_envir_map_target_hdr
+            data["foreground_mask_another_target"] = target_foreground_mask.clone()
             
             
         data["T"], data["cond_orientation"], data["target_orientation"] = self.get_T(target_RT, cond_RT)

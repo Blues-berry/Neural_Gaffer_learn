@@ -1,9 +1,4 @@
-# Backward-compatible combined config.
-# Preferred new workflow:
-#   --method_config configs/methods/highlight_hybrid_probe.txt
-#   --data_config configs/datasets/current_local_official.txt
 pretrained_model_name_or_path = /4T/huggingface_cache/models--kxic--zero123-xl/snapshots/7d8aec2223b93e84eb26893d1e732e013523474b
-output_dir = logs/neural_gaffer_training_gpu1_highlight
 gradient_accumulation_steps = 1
 mixed_precision = fp16
 allow_tf32 = true
@@ -25,11 +20,6 @@ report_to = wandb
 tracker_project_name = train_neural_gaffer_highlight_gpu1
 logging_steps = 50
 
-train_img_dir = /4T/CXY/Neural_Gaffer/training_data/images/training_img_data_subset
-train_lighting_dir = /4T/CXY/Neural_Gaffer/training_data/lighting/training_lighting_data_subset
-val_img_dir = /4T/CXY/Neural_Gaffer/validation_data/images/val_rendered_images_resized/validation
-val_lighting_dir = /4T/CXY/Neural_Gaffer/validation_data/lighting/val_preprocessed_environment_resized
-
 use_highlight_weighted_loss = false
 use_image_space_highlight_loss = true
 image_space_constraint_weight = 0.1
@@ -41,7 +31,6 @@ highlight_soft_weighting = true
 highlight_gamma = 2.0
 highlight_use_quantile_threshold = true
 highlight_quantile = 0.88
-# difference 模式下，这两个阈值已经不是绝对亮度，而是 luminance - local_mean 的裁剪范围
 highlight_min_threshold = 0.02
 highlight_max_threshold = 0.2
 highlight_quantile_blur_sigma = 1.0

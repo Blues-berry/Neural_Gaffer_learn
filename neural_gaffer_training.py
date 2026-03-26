@@ -561,6 +561,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
     predicted_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
     gt_images = [] # [num_validation_batches, ], each element is a np.array of [batch_size, h, w, 3]
+    gt_foreground_masks = []
     
     
     for valid_step, batch in tqdm(enumerate(validation_dataloader)):
@@ -575,6 +576,9 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         input_image = batch["image_cond"].to(dtype=weight_dtype)
         target_envmap_ldr = batch["envir_map_target_ldr"].to(dtype=weight_dtype)
         target_envmap_hdr = batch["envir_map_target_hdr"].to(dtype=weight_dtype)
+        target_foreground_mask = batch.get("foreground_mask_target")
+        if target_foreground_mask is not None:
+            target_foreground_mask = target_foreground_mask.to(dtype=weight_dtype)
         pose = batch["T"].to(dtype=weight_dtype)
         # target_orientation = batch["target_orientation"].to(dtype=weight_dtype)
         # pose = torch.cat([pose, target_orientation], dim=-1)
@@ -600,7 +604,12 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         envir_map_target_ldr_npy = 0.5 * (np.array(target_envmap_ldr.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
         gt_image_npy = 0.5 * (np.array(gt_image.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
         input_image_npy = 0.5 * (np.array(input_image.permute([0, 2, 3, 1]).cpu(), dtype=np.float32) + 1.0)
-        highlight_mask_npy, highlight_weight_npy = build_highlight_visualizations(gt_image, args, (h, w))
+        highlight_mask_npy, highlight_weight_npy = build_highlight_visualizations(
+            gt_image,
+            args,
+            (h, w),
+            foreground_mask=target_foreground_mask,
+        )
         
         prediction_image_sample0_list = []
         prediction_image_sample1_list = []
@@ -616,6 +625,10 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
 
         predicted_images.append(prediction_image_sample0)
         gt_images.append(gt_image_npy)
+        if target_foreground_mask is not None:
+            gt_foreground_masks.append(
+                target_foreground_mask.float().cpu().numpy().transpose(0, 2, 3, 1)
+            )
         
         # 为了便于在 wandb 一眼看懂结果，这里把一个 batch 内的图片沿竖直方向拼起来，
         # 再把不同类型的图（输入 / GT / 预测 / 高光图 / 环境图）沿水平方向拼接。
@@ -691,6 +704,9 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
     
     predicted_images_tensor = torch.tensor(predicted_images).permute([0, 3, 1, 2]) # [num, 3, h, w]
     gt_images_tensor = torch.tensor(gt_images).permute([0, 3, 1, 2]) # [num, 3, h, w]
+    gt_foreground_masks_tensor = None
+    if gt_foreground_masks:
+        gt_foreground_masks_tensor = torch.tensor(np.concatenate(gt_foreground_masks, axis=0)).permute([0, 3, 1, 2])
     ## LPIPS
     mean_lpips_loss = lpips(predicted_images_tensor * 2 - 1, gt_images_tensor * 2 - 1).mean().item()
     # print("LPIPS: ", mean_lpips_loss)
@@ -716,11 +732,13 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         relative_mode=getattr(args, "highlight_relative_mode", "none"),
         local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
         relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+        provided_foreground_mask=gt_foreground_masks_tensor,
     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
     image_foreground_mask = compute_foreground_mask(
         gt_image=gt_images_tensor * 2 - 1,
         latent_hw=gt_images_tensor.shape[-2:],
         background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+        provided_foreground_mask=gt_foreground_masks_tensor,
     ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
     image_highlight_metrics = summarize_highlight_loss_metrics(
         image_per_pixel_loss,
@@ -845,22 +863,40 @@ def compute_foreground_mask(
     gt_image: torch.Tensor,
     latent_hw: tuple[int, int],
     background_threshold: float = 0.98,
+    provided_foreground_mask: torch.Tensor | None = None,
 ):
     """
-    基于“接近纯白背景”的假设估计前景 mask。
+    优先使用显式 foreground mask；如果没有，再回退到白背景阈值。
 
-    当前数据集的渲染背景基本是白色，因此这里把 RGB 三通道都非常接近 1 的区域视为背景，
-    其余区域视为前景。mask 会被缩放到目标分辨率，用于高光图和 loss 的前景约束。
+    对于带 alpha / mask 的渲染数据，这里直接沿用外部 mask。
+    如果数据只有 RGB，则仍然保留原来的“接近纯白背景视为背景”的 fallback 逻辑。
     """
-    gt_img_01 = (gt_image.float() + 1.0) / 2.0
-    foreground_mask = (gt_img_01.amin(dim=1, keepdim=True) < background_threshold).float()
+    if provided_foreground_mask is not None:
+        foreground_mask = provided_foreground_mask.float()
+        if foreground_mask.ndim == 3:
+            foreground_mask = foreground_mask.unsqueeze(1)
+        elif foreground_mask.ndim == 4 and foreground_mask.shape[1] != 1:
+            foreground_mask = foreground_mask[:, :1]
+        elif foreground_mask.ndim != 4:
+            raise ValueError(f"Unexpected provided foreground mask shape: {foreground_mask.shape}")
+        foreground_mask = (foreground_mask > 0.5).float()
+    else:
+        gt_img_01 = (gt_image.float() + 1.0) / 2.0
+        foreground_mask = (gt_img_01.amin(dim=1, keepdim=True) < background_threshold).float()
     if foreground_mask.shape[-2:] != latent_hw:
-        foreground_mask = F.interpolate(
-            foreground_mask,
-            size=latent_hw,
-            mode="bilinear",
-            align_corners=False,
-        )
+        if provided_foreground_mask is not None:
+            foreground_mask = F.interpolate(
+                foreground_mask,
+                size=latent_hw,
+                mode="nearest",
+            )
+        else:
+            foreground_mask = F.interpolate(
+                foreground_mask,
+                size=latent_hw,
+                mode="bilinear",
+                align_corners=False,
+            )
         foreground_mask = (foreground_mask > 0.5).float()
     return foreground_mask
 
@@ -1066,6 +1102,7 @@ def compute_highlight_score_map(
     relative_mode: str = "none",
     local_kernel_size: int = 15,
     relative_eps: float = 1e-4,
+    provided_foreground_mask: torch.Tensor | None = None,
 ):
     """
     生成高光软分数图和二值 mask。
@@ -1084,6 +1121,7 @@ def compute_highlight_score_map(
         gt_image=gt_image,
         latent_hw=luminance.shape[-2:],
         background_threshold=background_threshold,
+        provided_foreground_mask=provided_foreground_mask,
     ).to(device=luminance.device, dtype=luminance.dtype)
     threshold_map = resolve_highlight_threshold_map(
         luminance=luminance,
@@ -1116,6 +1154,7 @@ def compute_highlight_score_map(
         gt_image=gt_image,
         latent_hw=latent_hw,
         background_threshold=background_threshold,
+        provided_foreground_mask=provided_foreground_mask,
     ).to(device=score_map.device, dtype=score_map.dtype)
     score_map = score_map * foreground_mask
     mask_map = mask_map * foreground_mask
@@ -1139,6 +1178,7 @@ def compute_highlight_weight_map(
     relative_mode: str = "none",
     local_kernel_size: int = 15,
     relative_eps: float = 1e-4,
+    provided_foreground_mask: torch.Tensor | None = None,
 ):
     """
     根据真实目标图像生成“高光区域权重图”，并缩放到 latent / noise loss 的分辨率。
@@ -1176,6 +1216,7 @@ def compute_highlight_weight_map(
         relative_mode=relative_mode,
         local_kernel_size=local_kernel_size,
         relative_eps=relative_eps,
+        provided_foreground_mask=provided_foreground_mask,
     )
     return foreground_mask * (1.0 + extra_weight * highlight_score)
 
@@ -1253,6 +1294,7 @@ def compute_highlight_mask(
     relative_mode: str = "none",
     local_kernel_size: int = 15,
     relative_eps: float = 1e-4,
+    provided_foreground_mask: torch.Tensor | None = None,
 ):
     """
     生成与 latent loss 分辨率对齐的二值高光区域 mask。
@@ -1270,6 +1312,7 @@ def compute_highlight_mask(
         relative_mode=relative_mode,
         local_kernel_size=local_kernel_size,
         relative_eps=relative_eps,
+        provided_foreground_mask=provided_foreground_mask,
     )
     return highlight_mask
 
@@ -1360,7 +1403,12 @@ def summarize_latent_highlight_probe_metrics(
     }
 
 
-def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tuple[int, int]):
+def build_highlight_visualizations(
+    gt_image: torch.Tensor,
+    args,
+    output_hw: tuple[int, int],
+    foreground_mask: torch.Tensor | None = None,
+):
     """
     构造验证阶段要显示的两张图:
     - highlight_mask: 二值高光 mask
@@ -1388,6 +1436,7 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         relative_mode=getattr(args, "highlight_relative_mode", "none"),
         local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
         relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+        provided_foreground_mask=foreground_mask,
     )
     weight_map = compute_highlight_weight_map(
         gt_image=gt_image,
@@ -1405,6 +1454,7 @@ def build_highlight_visualizations(gt_image: torch.Tensor, args, output_hw: tupl
         relative_mode=getattr(args, "highlight_relative_mode", "none"),
         local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
         relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+        provided_foreground_mask=foreground_mask,
     )
     weight_norm = ((weight_map - 1.0) / max(1e-6, getattr(args, "highlight_loss_weight", 1.0))).clamp(0.0, 1.0)
 
@@ -1890,6 +1940,7 @@ def main(args):
             transforms.Normalize([0.5], [0.5]) # x -> (x - 0.5) / 0.5 == 2 * x - 1.0; [0.0, 1.0] -> [-1.0, 1.0]
         ]
     )
+    foreground_background_threshold = getattr(args, "foreground_background_threshold", 0.98)
  
     
     train_dataset = NeuralGafferTrainingData(
@@ -1903,6 +1954,7 @@ def main(args):
         image_preprocessed = True,
         dataset_type='training_object_with_seen_envir',
         random_lighting_condition_prob=args.random_lighting_condition_prob,
+        foreground_background_threshold=foreground_background_threshold,
         )
     
     # validate seen training object with unseen lighting, and the input images of are rendered with unseen lighting under unseen camera poses
@@ -1917,7 +1969,8 @@ def main(args):
         validation=True,
         relighting_only=True,
         image_preprocessed = False,
-        dataset_type='training_object_with_unseen_envir'
+        dataset_type='training_object_with_unseen_envir',
+        foreground_background_threshold=foreground_background_threshold,
         )   
     
     # validate unseen object with unseen lighting, and the input images of the unseen object are rendered with random area lighting 
@@ -1932,7 +1985,8 @@ def main(args):
         validation=True,
         image_preprocessed = True,  
         relighting_only=True,
-        dataset_type='unseen_object_with_random_area_light_condition'
+        dataset_type='unseen_object_with_random_area_light_condition',
+        foreground_background_threshold=foreground_background_threshold,
         )       
 
 
@@ -1947,7 +2001,8 @@ def main(args):
         validation=True,
         image_preprocessed = True,  
         relighting_only=True,
-        dataset_type='unseen_object_with_seen_envir'
+        dataset_type='unseen_object_with_seen_envir',
+        foreground_background_threshold=foreground_background_threshold,
         ) 
     
     validation_dataset_unseen_lighting = NeuralGafferTrainingData(
@@ -1961,7 +2016,8 @@ def main(args):
         validation=True,
         image_preprocessed = True,  
         relighting_only=True,
-        dataset_type='unseen_object_with_unseen_envir'
+        dataset_type='unseen_object_with_unseen_envir',
+        foreground_background_threshold=foreground_background_threshold,
         )   
     
        
@@ -2214,10 +2270,13 @@ def main(args):
                 input_image = batch["image_cond"].to(dtype=weight_dtype)
                 relighting_image_group1 = batch["image_target"].to(dtype=weight_dtype)
                 relighting_image_group2 = batch["image_another_target"].to(dtype=weight_dtype)
+                foreground_mask_group1 = batch["foreground_mask_target"].to(dtype=weight_dtype)
+                foreground_mask_group2 = batch["foreground_mask_another_target"].to(dtype=weight_dtype)
                 pose = batch["T"].to(dtype=weight_dtype)
                 pose = torch.cat([pose, pose], dim=0)
                 input_image = torch.cat((input_image, input_image), dim=0)
                 gt_image = torch.cat((relighting_image_group1, relighting_image_group2), dim=0)
+                gt_foreground_mask = torch.cat((foreground_mask_group1, foreground_mask_group2), dim=0)
                 
                 # environment map target
                 target_envir_map_ldr_group1 = batch["envir_map_target_ldr"].to(dtype=weight_dtype)
@@ -2315,6 +2374,7 @@ def main(args):
                     relative_mode=getattr(args, "highlight_relative_mode", "none"),
                     local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
                     relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+                    provided_foreground_mask=gt_foreground_mask,
                 )
                 latent_highlight_score = latent_highlight_score.to(
                     device=diffusion_per_pixel_loss.device,
@@ -2394,6 +2454,7 @@ def main(args):
                         relative_mode=getattr(args, "highlight_relative_mode", "none"),
                         local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
                         relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+                        provided_foreground_mask=gt_foreground_mask,
                     ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                     # weighted_loss: 每个位置的 loss 乘以空间权重
                     weighted_loss = diffusion_per_pixel_loss * weight_map
@@ -2473,6 +2534,7 @@ def main(args):
                                 relative_mode=getattr(args, "highlight_relative_mode", "none"),
                                 local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
                                 relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+                                provided_foreground_mask=gt_foreground_mask,
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             image_weighted_loss = image_per_pixel_loss * image_weight_map
                             image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
@@ -2491,11 +2553,13 @@ def main(args):
                                 relative_mode=getattr(args, "highlight_relative_mode", "none"),
                                 local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
                                 relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+                                provided_foreground_mask=gt_foreground_mask,
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             image_foreground_mask = compute_foreground_mask(
                                 gt_image=gt_image,
                                 latent_hw=image_per_pixel_loss.shape[-2:],
                                 background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+                                provided_foreground_mask=gt_foreground_mask,
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             active_highlight_metric_tensors = summarize_highlight_loss_metrics(
                                 image_per_pixel_loss,
