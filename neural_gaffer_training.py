@@ -35,6 +35,7 @@ from diffusers import (
     DDPMScheduler,
     UNet2DConditionModel,
 )
+from light_probe_conditioning import LightProbeEncoder
 from pipeline_neural_gaffer import Neural_Gaffer_StableDiffusionPipeline
 
 from diffusers.optimization import get_scheduler
@@ -505,7 +506,19 @@ def compute_specular_metrics(pred: torch.Tensor, target: torch.Tensor, threshold
 
     return metrics
 
-def log_validation(validation_dataloader, vae, image_encoder, feature_extractor, unet, args, accelerator, weight_dtype, split="val", cur_step=0):
+def log_validation(
+    validation_dataloader,
+    vae,
+    image_encoder,
+    feature_extractor,
+    unet,
+    light_probe_encoder,
+    args,
+    accelerator,
+    weight_dtype,
+    split="val",
+    cur_step=0,
+):
     """
     跑一轮验证，并把结果可视化后记录到 wandb。
 
@@ -530,6 +543,11 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         image_encoder=accelerator.unwrap_model(image_encoder).eval(),
         feature_extractor=feature_extractor,
         unet=accelerator.unwrap_model(unet).eval(),
+        light_probe_encoder=(
+            accelerator.unwrap_model(light_probe_encoder).eval()
+            if light_probe_encoder is not None
+            else None
+        ),
         scheduler=scheduler,
         safety_checker=None,
         torch_dtype=weight_dtype,
@@ -1537,6 +1555,7 @@ def build_wandb_run_name(args) -> str:
     use_highlight_weighted_loss = getattr(args, "use_highlight_weighted_loss", False)
     requested_image_space_highlight_loss = getattr(args, "use_image_space_highlight_loss", False)
     use_latent_highlight_probe = getattr(args, "use_latent_highlight_probe", False)
+    use_light_probe_conditioning = getattr(args, "use_light_probe_conditioning", False)
     replace_image_space_with_latent_probe = getattr(args, "replace_image_space_highlight_loss_with_latent_probe", False)
     use_hybrid_probe_distillation = getattr(args, "use_hybrid_probe_distillation", False)
     use_image_space_highlight_loss = requested_image_space_highlight_loss and not replace_image_space_with_latent_probe
@@ -1576,6 +1595,12 @@ def build_wandb_run_name(args) -> str:
     latent_highlight_probe_warmup_steps = int(getattr(args, "latent_highlight_probe_warmup_steps", 0) or 0)
     latent_highlight_probe_loss_weight = float(getattr(args, "latent_highlight_probe_loss_weight", 0.0) or 0.0)
     latent_highlight_probe_hidden_channels = int(getattr(args, "latent_highlight_probe_hidden_channels", 16) or 16)
+    light_probe_hidden_dim = int(getattr(args, "light_probe_hidden_dim", 128) or 128)
+    light_probe_global_token_count = int(getattr(args, "light_probe_global_token_count", 2) or 2)
+    light_probe_local_grid_height = int(getattr(args, "light_probe_local_grid_height", 2) or 2)
+    light_probe_local_grid_width = int(getattr(args, "light_probe_local_grid_width", 4) or 4)
+    light_probe_warmup_steps = int(getattr(args, "light_probe_warmup_steps", 0) or 0)
+    light_probe_env_map_mode = str(getattr(args, "light_probe_env_map_mode", "ldr") or "ldr").lower()
     if getattr(args, "highlight_use_quantile_threshold", False):
         parts.append(f"q{_format_run_float_token(getattr(args, 'highlight_quantile', 0.95), scale=100)}")
         if quantile_blur_sigma > 0.0:
@@ -1596,6 +1621,17 @@ def build_wandb_run_name(args) -> str:
             parts.append(f"lph{latent_highlight_probe_hidden_channels}")
         if getattr(args, "latent_highlight_probe_detach_input", False):
             parts.append("lpsg")
+    if use_light_probe_conditioning:
+        parts.append("lpc")
+        parts.append(light_probe_env_map_mode)
+        if getattr(args, "light_probe_use_sh_features", True):
+            parts.append("sh")
+        if light_probe_hidden_dim != 128:
+            parts.append(f"lphd{light_probe_hidden_dim}")
+        parts.append(f"lpt{light_probe_global_token_count}g")
+        parts.append(f"lpgrid{light_probe_local_grid_height}x{light_probe_local_grid_width}")
+        if light_probe_warmup_steps > 0:
+            parts.append(f"lptwu{int(light_probe_warmup_steps / 1000)}k")
     if image_space_constraint_warmup_steps > 0 or highlight_loss_weight_warmup_steps > 0:
         if image_space_constraint_warmup_steps == highlight_loss_weight_warmup_steps:
             parts.append(f"wu{int(image_space_constraint_warmup_steps / 1000)}k")
@@ -1644,6 +1680,33 @@ def _encode_image_without_pose(image_encoder, image, device, dtype, do_classifie
         negative_prompt = torch.zeros_like(prompt_embeds)
         prompt_embeds = torch.cat([negative_prompt, prompt_embeds])
     return prompt_embeds
+
+
+def append_light_probe_tokens(
+    prompt_embeds: torch.Tensor,
+    light_probe_encoder: LightProbeEncoder | None,
+    hdr_env_map: torch.Tensor,
+    ldr_env_map: torch.Tensor,
+    drop_mask: torch.Tensor | None = None,
+    token_scale: float = 1.0,
+):
+    if light_probe_encoder is None:
+        return prompt_embeds, None
+
+    light_tokens = light_probe_encoder(
+        hdr_env_map.to(device=prompt_embeds.device, dtype=prompt_embeds.dtype),
+        ldr_env_map.to(device=prompt_embeds.device, dtype=prompt_embeds.dtype),
+        output_dtype=prompt_embeds.dtype,
+    )
+    if drop_mask is not None:
+        light_tokens = torch.where(
+            drop_mask.reshape(drop_mask.shape[0], 1, 1),
+            torch.zeros_like(light_tokens),
+            light_tokens,
+        )
+    if token_scale != 1.0:
+        light_tokens = light_tokens * float(token_scale)
+    return torch.cat([prompt_embeds, light_tokens], dim=1), light_tokens
 
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -1696,7 +1759,9 @@ def main(args):
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", **loading_kwargs)
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet", **loading_kwargs)
     use_latent_highlight_probe = getattr(args, "use_latent_highlight_probe", False)
+    use_light_probe_conditioning = getattr(args, "use_light_probe_conditioning", False)
     latent_highlight_probe = None
+    light_probe_encoder = None
     
     
     vae.train()
@@ -1720,6 +1785,29 @@ def main(args):
         )
         latent_highlight_probe.requires_grad_(True)
         latent_highlight_probe.train()
+    if use_light_probe_conditioning:
+        light_probe_env_map_mode = str(getattr(args, "light_probe_env_map_mode", "ldr") or "ldr").lower()
+        light_probe_input_channels = 6 if light_probe_env_map_mode == "both" else 3
+        light_probe_token_dim = int(
+            getattr(image_encoder.config, "projection_dim", None)
+            or getattr(image_encoder.config, "hidden_size", None)
+            or 768
+        )
+        light_probe_encoder = LightProbeEncoder(
+            input_channels=light_probe_input_channels,
+            hidden_dim=int(getattr(args, "light_probe_hidden_dim", 128) or 128),
+            token_dim=light_probe_token_dim,
+            input_height=int(getattr(args, "light_probe_input_height", 32) or 32),
+            input_width=int(getattr(args, "light_probe_input_width", 64) or 64),
+            global_token_count=int(getattr(args, "light_probe_global_token_count", 2) or 2),
+            local_grid_height=int(getattr(args, "light_probe_local_grid_height", 2) or 2),
+            local_grid_width=int(getattr(args, "light_probe_local_grid_width", 4) or 4),
+            use_sh_features=bool(getattr(args, "light_probe_use_sh_features", True)),
+            env_map_mode=light_probe_env_map_mode,
+            hdr_log_compress=bool(getattr(args, "light_probe_hdr_log_compress", True)),
+        )
+        light_probe_encoder.requires_grad_(True)
+        light_probe_encoder.train()
 
 
 
@@ -1789,6 +1877,11 @@ def main(args):
             *(
                 [{"params": latent_highlight_probe.parameters(), "lr": args.learning_rate}]
                 if use_latent_highlight_probe and latent_highlight_probe is not None
+                else []
+            ),
+            *(
+                [{"params": light_probe_encoder.parameters(), "lr": args.learning_rate}]
+                if use_light_probe_conditioning and light_probe_encoder is not None
                 else []
             ),
         ],
@@ -1887,6 +1980,24 @@ def main(args):
         )
     else:
         logger.info("Latent-space highlight probe disabled")
+    if use_light_probe_conditioning:
+        logger.info(
+            "Light-probe conditioning enabled with hidden_dim=%s input_hw=%sx%s global_tokens=%s local_grid=%sx%s use_sh=%s env_mode=%s hdr_log_compress=%s token_scale=%s warmup_steps=%s sync_dropout_with_image=%s",
+            getattr(args, "light_probe_hidden_dim", 128),
+            getattr(args, "light_probe_input_height", 32),
+            getattr(args, "light_probe_input_width", 64),
+            getattr(args, "light_probe_global_token_count", 2),
+            getattr(args, "light_probe_local_grid_height", 2),
+            getattr(args, "light_probe_local_grid_width", 4),
+            getattr(args, "light_probe_use_sh_features", True),
+            getattr(args, "light_probe_env_map_mode", "ldr"),
+            getattr(args, "light_probe_hdr_log_compress", True),
+            getattr(args, "light_probe_token_scale", 1.0),
+            getattr(args, "light_probe_warmup_steps", 0),
+            getattr(args, "light_probe_sync_dropout_with_image", True),
+        )
+    else:
+        logger.info("Light-probe conditioning disabled")
     if use_hybrid_probe_distillation:
         logger.info(
             "Hybrid probe distillation enabled with transition_start_step=%s transition_end_step=%s final_image_space_scale=%s final_probe_scale=%s",
@@ -1929,6 +2040,8 @@ def main(args):
     print_model_info(unet)
     if latent_highlight_probe is not None:
         print_model_info(latent_highlight_probe)
+    if light_probe_encoder is not None:
+        print_model_info(light_probe_encoder)
     print_model_info(vae)
     print_model_info(image_encoder)
     
@@ -2107,18 +2220,30 @@ def main(args):
 
     
     # Prepare everything with our `accelerator`.
+    prepare_items = [unet]
     if latent_highlight_probe is not None:
-        unet, latent_highlight_probe, optimizer, train_dataloader, train_log_dataloader, lr_scheduler = accelerator.prepare(
-            unet, latent_highlight_probe, optimizer, train_dataloader, train_log_dataloader, lr_scheduler
-        )
-    else:
-        unet, optimizer, train_dataloader, train_log_dataloader, lr_scheduler = accelerator.prepare(
-            unet, optimizer, train_dataloader, train_log_dataloader, lr_scheduler
-        )
+        prepare_items.append(latent_highlight_probe)
+    if light_probe_encoder is not None:
+        prepare_items.append(light_probe_encoder)
+    prepare_items.extend([optimizer, train_dataloader, train_log_dataloader, lr_scheduler])
+    prepared = accelerator.prepare(*prepare_items)
+
+    prepared_idx = 0
+    unet = prepared[prepared_idx]
+    prepared_idx += 1
+    if latent_highlight_probe is not None:
+        latent_highlight_probe = prepared[prepared_idx]
+        prepared_idx += 1
+    if light_probe_encoder is not None:
+        light_probe_encoder = prepared[prepared_idx]
+        prepared_idx += 1
+    optimizer, train_dataloader, train_log_dataloader, lr_scheduler = prepared[prepared_idx:]
 
     trainable_models = [unet]
     if latent_highlight_probe is not None:
         trainable_models.append(latent_highlight_probe)
+    if light_probe_encoder is not None:
+        trainable_models.append(light_probe_encoder)
 
     def iter_trainable_parameters():
         for model in trainable_models:
@@ -2306,6 +2431,12 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(gt_latents.to(dtype=torch.float32), noise.to(dtype=torch.float32), timesteps).to(dtype=img_latents.dtype)
+                light_probe_tokens = None
+                effective_light_probe_token_scale = get_warmup_scaled_weight(
+                    getattr(args, "light_probe_token_scale", 1.0),
+                    global_step=global_step,
+                    warmup_steps=getattr(args, "light_probe_warmup_steps", 0),
+                )
                 if do_classifier_free_guidance:  # support classifier-free guidance, randomly drop out 5%
                     # Conditioning dropout to support classifier-free guidance during inference. For more details
                     # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
@@ -2334,9 +2465,27 @@ def main(args):
                     img_latents = image_mask * img_latents
                     target_envir_map_ldr_latents = image_mask * target_envir_map_ldr_latents
                     target_envir_map_hdr_latents = image_mask * target_envir_map_hdr_latents
+                    light_probe_drop_mask = prompt_mask
+                    if getattr(args, "light_probe_sync_dropout_with_image", True):
+                        light_probe_drop_mask = image_mask.reshape(bsz, 1, 1) < 0.5
+                    prompt_embeds, light_probe_tokens = append_light_probe_tokens(
+                        prompt_embeds=prompt_embeds,
+                        light_probe_encoder=light_probe_encoder,
+                        hdr_env_map=target_envir_map_hdr,
+                        ldr_env_map=target_envir_map_ldr,
+                        drop_mask=light_probe_drop_mask,
+                        token_scale=effective_light_probe_token_scale,
+                    )
                 else:
                     # Get the image_with_pose embedding for conditioning
                     prompt_embeds = _encode_image_without_pose(image_encoder, input_image, gt_latents.device, weight_dtype, False)
+                    prompt_embeds, light_probe_tokens = append_light_probe_tokens(
+                        prompt_embeds=prompt_embeds,
+                        light_probe_encoder=light_probe_encoder,
+                        hdr_env_map=target_envir_map_hdr,
+                        ldr_env_map=target_envir_map_ldr,
+                        token_scale=effective_light_probe_token_scale,
+                    )
 
 
                 # latent_model_input = torch.cat([noisy_latents, img_latents], dim=1)
@@ -2649,6 +2798,11 @@ def main(args):
                             "hybrid_probe/transition_progress": hybrid_transition_progress,
                             "hybrid_probe/image_space_scale": hybrid_image_space_scale,
                             "hybrid_probe/probe_scale": hybrid_probe_scale,
+                            "light_probe/effective_token_scale": effective_light_probe_token_scale,
+                            "light_probe/token_warmup_scale": linear_warmup_scale(
+                                global_step,
+                                getattr(args, "light_probe_warmup_steps", 0),
+                            ),
                         }
                     )
                     if use_latent_highlight_probe:
@@ -2695,6 +2849,19 @@ def main(args):
                             {
                                 f"latent_probe/{key}": accelerator.reduce(value.detach(), reduction="mean").item()
                                 for key, value in latent_probe_metric_tensors.items()
+                            }
+                        )
+                    if light_probe_tokens is not None:
+                        highlight_logs.update(
+                            {
+                                "light_probe/token_abs_mean": accelerator.reduce(
+                                    light_probe_tokens.detach().abs().mean(), reduction="mean"
+                                ).item(),
+                                "light_probe/token_l2_mean": accelerator.reduce(
+                                    light_probe_tokens.detach().pow(2).mean().sqrt(), reduction="mean"
+                                ).item(),
+                                "light_probe/token_count": int(light_probe_tokens.shape[1]),
+                                "light_probe/env_mode": str(getattr(args, "light_probe_env_map_mode", "ldr")),
                             }
                         )
                     sanitized_highlight_logs, skipped_highlight_logs = sanitize_log_dict(highlight_logs)
@@ -2818,6 +2985,7 @@ def main(args):
                             image_encoder,
                             feature_extractor,
                             unet,
+                            light_probe_encoder,
                             args,
                             accelerator,
                             weight_dtype,
@@ -2841,6 +3009,7 @@ def main(args):
                             image_encoder,
                             feature_extractor,
                             unet,
+                            light_probe_encoder,
                             args,
                             accelerator,
                             weight_dtype,
@@ -2863,6 +3032,7 @@ def main(args):
                             image_encoder,
                             feature_extractor,
                             unet,
+                            light_probe_encoder,
                             args,
                             accelerator,
                             weight_dtype,
@@ -2884,6 +3054,7 @@ def main(args):
                             image_encoder,
                             feature_extractor,
                             unet,
+                            light_probe_encoder,
                             args,
                             accelerator,
                             weight_dtype,
@@ -2907,6 +3078,7 @@ def main(args):
                             image_encoder,
                             feature_extractor,
                             unet,
+                            light_probe_encoder,
                             args,
                             accelerator,
                             weight_dtype,
@@ -3085,6 +3257,11 @@ def main(args):
             image_encoder=accelerator.unwrap_model(image_encoder),
             feature_extractor=feature_extractor,
             unet=unet,
+            light_probe_encoder=(
+                accelerator.unwrap_model(light_probe_encoder)
+                if light_probe_encoder is not None
+                else None
+            ),
             scheduler=noise_scheduler,
             safety_checker=None,
             torch_dtype=torch.float32,

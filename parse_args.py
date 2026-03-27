@@ -119,6 +119,85 @@ def parse_args(input_args=None):
         default=0.05,
         help="Conditioning dropout probability. Drops out the conditionings (image and edit prompt) used in training InstructPix2Pix. See section 3.2.1 in the paper: https://arxiv.org/abs/2211.09800"
     )
+    parser.add_argument(
+        "--use_light_probe_conditioning",
+        type=parse_bool,
+        default=False,
+        help="Whether to encode HDR/LDR environment maps into explicit light-probe tokens for UNet cross-attention.",
+    )
+    parser.add_argument(
+        "--light_probe_hidden_dim",
+        type=int,
+        default=128,
+        help="Hidden width of the lightweight light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_input_height",
+        type=int,
+        default=32,
+        help="Internal resized height used by the light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_input_width",
+        type=int,
+        default=64,
+        help="Internal resized width used by the light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_global_token_count",
+        type=int,
+        default=2,
+        help="Number of global light tokens produced by the light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_local_grid_height",
+        type=int,
+        default=2,
+        help="Height of the local pooled token grid used by the light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_local_grid_width",
+        type=int,
+        default=4,
+        help="Width of the local pooled token grid used by the light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_use_sh_features",
+        type=parse_bool,
+        default=True,
+        help="Whether to append low-order spherical-harmonic features to the light-probe tokens.",
+    )
+    parser.add_argument(
+        "--light_probe_token_scale",
+        type=float,
+        default=1.0,
+        help="Optional scalar applied to light-probe tokens before concatenating them to prompt embeddings.",
+    )
+    parser.add_argument(
+        "--light_probe_warmup_steps",
+        type=int,
+        default=0,
+        help="Warm up light-probe token strength over the first N optimization steps.",
+    )
+    parser.add_argument(
+        "--light_probe_env_map_mode",
+        type=str,
+        default="ldr",
+        choices=["ldr", "hdr", "both"],
+        help="Which environment-map branch to feed into the light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_hdr_log_compress",
+        type=parse_bool,
+        default=True,
+        help="Whether to apply sign-preserving log compression before using HDR maps in the light-probe encoder.",
+    )
+    parser.add_argument(
+        "--light_probe_sync_dropout_with_image",
+        type=parse_bool,
+        default=True,
+        help="Whether light-probe token dropout should follow the image/env latent dropout mask instead of prompt dropout.",
+    )
 
     parser.add_argument(
         "--checkpointing_steps",

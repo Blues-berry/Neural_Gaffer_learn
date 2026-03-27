@@ -1,9 +1,4 @@
-# Backward-compatible combined config.
-# Preferred new workflow:
-#   --method_config configs/methods/highlight_hybrid_probe.txt
-#   --data_config configs/datasets/current_local_official.txt
 pretrained_model_name_or_path = /4T/huggingface_cache/models--kxic--zero123-xl/snapshots/7d8aec2223b93e84eb26893d1e732e013523474b
-output_dir = logs/neural_gaffer_training_gpu1_highlight
 gradient_accumulation_steps = 1
 mixed_precision = fp16
 allow_tf32 = true
@@ -15,7 +10,7 @@ num_validation_images = 1
 num_validation_batches = 6
 validation_steps = 1000
 initial_validation_step = -1
-max_train_steps = 40000
+max_train_steps = 80000
 checkpointing_steps = 1000
 checkpoints_total_limit = 8
 best_checkpoint_until_step = 72000
@@ -24,11 +19,6 @@ use_ema = true
 report_to = wandb
 tracker_project_name = train_neural_gaffer_highlight_gpu1
 logging_steps = 50
-
-train_img_dir = /4T/CXY/Neural_Gaffer/training_data/images/training_img_data_subset
-train_lighting_dir = /4T/CXY/Neural_Gaffer/training_data/lighting/training_lighting_data_subset
-val_img_dir = /4T/CXY/Neural_Gaffer/validation_data/images/val_rendered_images_resized/validation
-val_lighting_dir = /4T/CXY/Neural_Gaffer/validation_data/lighting/val_preprocessed_environment_resized
 
 use_highlight_weighted_loss = false
 use_image_space_highlight_loss = true
@@ -41,19 +31,28 @@ highlight_soft_weighting = true
 highlight_gamma = 2.0
 highlight_use_quantile_threshold = true
 highlight_quantile = 0.88
-# difference 模式下，这两个阈值已经不是绝对亮度，而是 luminance - local_mean 的裁剪范围
 highlight_min_threshold = 0.02
 highlight_max_threshold = 0.2
 highlight_quantile_blur_sigma = 1.0
 highlight_relative_mode = difference
 highlight_local_kernel_size = 15
 highlight_relative_eps = 1e-4
-use_latent_highlight_probe = true
+foreground_background_threshold = 0.96
+random_lighting_condition_prob = 0.4
+
+use_latent_highlight_probe = false
 latent_highlight_probe_loss_weight = 0.05
 latent_highlight_probe_warmup_steps = 3000
 latent_highlight_probe_hidden_channels = 16
 latent_highlight_probe_detach_input = false
-use_light_probe_conditioning = false
+replace_image_space_highlight_loss_with_latent_probe = false
+use_hybrid_probe_distillation = false
+hybrid_probe_transition_start_step = 20000
+hybrid_probe_transition_end_step = 32000
+hybrid_probe_final_image_space_scale = 0.25
+hybrid_probe_final_probe_scale = 2.0
+
+use_light_probe_conditioning = true
 light_probe_hidden_dim = 128
 light_probe_input_height = 32
 light_probe_input_width = 64
@@ -61,16 +60,9 @@ light_probe_global_token_count = 2
 light_probe_local_grid_height = 2
 light_probe_local_grid_width = 4
 light_probe_use_sh_features = true
-light_probe_token_scale = 1.0
-light_probe_warmup_steps = 0
+light_probe_token_scale = 0.5
+light_probe_warmup_steps = 3000
 light_probe_env_map_mode = ldr
 light_probe_hdr_log_compress = true
 light_probe_sync_dropout_with_image = true
-replace_image_space_highlight_loss_with_latent_probe = false
-use_hybrid_probe_distillation = true
-hybrid_probe_transition_start_step = 20000
-hybrid_probe_transition_end_step = 32000
-hybrid_probe_final_image_space_scale = 0.25
-hybrid_probe_final_probe_scale = 2.0
-foreground_background_threshold = 0.96
-random_lighting_condition_prob = 0.4
+wandb_run_note = light_probe_mainline

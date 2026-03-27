@@ -40,10 +40,8 @@ from diffusers.utils import (
 from diffusers.configuration_utils import FrozenDict
 import PIL
 import numpy as np
-import math
 import kornia
-from diffusers.configuration_utils import ConfigMixin
-from diffusers.models.modeling_utils import ModelMixin
+from light_probe_conditioning import LightProbeEncoder
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # todo
@@ -60,9 +58,6 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt).images[0]
         ```
 """
-
-
-
 
 
 class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
@@ -103,7 +98,7 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker", "feature_extractor", "light_probe_encoder"]
 
     def __init__(
         self,
@@ -113,6 +108,7 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        light_probe_encoder: Optional[LightProbeEncoder] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -188,6 +184,7 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
+            light_probe_encoder=light_probe_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
@@ -520,6 +517,31 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
 
         return image_embeddings
 
+    def _encode_light_probe(
+        self,
+        first_target_envir_map,
+        second_target_envir_map,
+        prompt_embeds: torch.Tensor,
+        batch_size: int,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        device,
+    ):
+        if self.light_probe_encoder is None:
+            return prompt_embeds
+
+        if not isinstance(first_target_envir_map, torch.Tensor) or not isinstance(second_target_envir_map, torch.Tensor):
+            raise ValueError("Light probe conditioning currently expects tensor environment maps during inference.")
+
+        light_tokens = self.light_probe_encoder(
+            first_target_envir_map.to(device=device, dtype=prompt_embeds.dtype),
+            second_target_envir_map.to(device=device, dtype=prompt_embeds.dtype),
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            output_dtype=prompt_embeds.dtype,
+        )
+        return torch.cat([prompt_embeds, light_tokens], dim=1)
+
     def _encode_pose(self, pose, device, num_images_per_prompt, do_classifier_free_guidance):
         """
         把位姿编码成一个低维向量。
@@ -847,6 +869,15 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         # 3. 把条件图像编码成 CLIP embedding。
         # 这一步得到的是 `prompt_embeds`，会在 UNet 中作为 cross-attention 条件使用。
         prompt_embeds = self._encode_image_without_pose(prompt_imgs, device, num_images_per_prompt, do_classifier_free_guidance)
+        prompt_embeds = self._encode_light_probe(
+            first_target_envir_map=first_target_envir_map,
+            second_target_envir_map=second_target_envir_map,
+            prompt_embeds=prompt_embeds,
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            device=device,
+        )
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
