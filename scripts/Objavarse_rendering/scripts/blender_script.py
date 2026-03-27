@@ -12,6 +12,7 @@ import json
 import math
 import os
 import random
+import shutil
 import sys
 import time
 import urllib.request
@@ -429,6 +430,22 @@ def transform_from_xyz_to_degree(pos):
     
     return elevation, azimuth, distance
 
+
+def object_output_is_complete(output_dir: str, num_images: int, lighting_per_view: int) -> bool:
+    if not os.path.isdir(output_dir):
+        return False
+    expected_rgb = num_images * lighting_per_view
+    rgb_count = len(glob(os.path.join(output_dir, "???_???_*.png")))
+    rt_count = len(glob(os.path.join(output_dir, "*_RT.npy")))
+    normal_count = len(glob(os.path.join(output_dir, "normal_*.png"))) + len(glob(os.path.join(output_dir, "???_normals.png")))
+    random_lighting_count = len(glob(os.path.join(output_dir, "random_lighting_*.png")))
+    return (
+        rgb_count >= expected_rgb
+        and rt_count >= num_images
+        and normal_count >= num_images
+        and random_lighting_count >= num_images
+    )
+
 def save_images(object_file: str, object_uid: str = None) -> None:
     try:
         """Saves rendered images of the object in the scene."""
@@ -436,9 +453,12 @@ def save_images(object_file: str, object_uid: str = None) -> None:
         # os.system(f'echo "{object_uid}: loading" >> {args.output_dir}/load.txt')
 
         os.makedirs(args.output_dir, exist_ok=True)
-        
-        if os.path.exists(os.path.join(args.output_dir, object_uid)):
+
+        object_output_dir = os.path.join(args.output_dir, object_uid)
+        if object_output_is_complete(object_output_dir, args.num_images, args.lighting_per_view):
             return
+        if os.path.exists(object_output_dir):
+            shutil.rmtree(object_output_dir, ignore_errors=True)
 
 
         normal_file_output, albedo_file_output = reset_scene()
@@ -454,10 +474,14 @@ def save_images(object_file: str, object_uid: str = None) -> None:
         scene.collection.objects.link(empty)
         cam_constraint.target = empty
 
-        os.makedirs(os.path.join(args.output_dir, object_uid), exist_ok=True)
+        os.makedirs(object_output_dir, exist_ok=True)
         
-        envir_map_list = glob(os.path.join(args.test_light_dir, "*/*.exr"), recursive=True)
-        envir_map_list.sort()
+        envir_map_list = []
+        for ext in ("exr", "hdr"):
+            envir_map_list.extend(glob(os.path.join(args.test_light_dir, f"*/*.{ext}"), recursive=True))
+        envir_map_list = sorted(set(envir_map_list))
+        if not envir_map_list:
+            raise RuntimeError(f"No HDRI files found under {args.test_light_dir}")
 
         normal_file_output.mute = False
         albedo_file_output.mute = False

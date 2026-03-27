@@ -308,9 +308,12 @@ if __name__ == "__main__":
     
     envir_map_paths = dict()
 
-    cur_envir_map_paths = glob(os.path.join(args.lighting_dir, '*/*.exr'))
+    cur_envir_map_paths = []
+    for ext in ("exr", "hdr"):
+        cur_envir_map_paths.extend(glob(os.path.join(args.lighting_dir, f'*/*.{ext}')))
+    cur_envir_map_paths = sorted(set(cur_envir_map_paths))
     for envir_map_path in cur_envir_map_paths:
-        envir_map_name = os.path.basename(envir_map_path)[:-4]
+        envir_map_name = os.path.splitext(os.path.basename(envir_map_path))[0]
         if envir_map_name not in envir_map_paths:
             envir_map_paths[envir_map_name] = envir_map_path
     envir_map_hdr_values = dict()

@@ -1,12 +1,12 @@
 {
   "domain": "ecommerce",
-  "target_count": 1000,
-  "output_manifest": "/4T/CXY/Neural_Gaffer_original/external_sources/manifests/ecommerce_external_1000.json",
+  "target_count": 2000,
+  "output_manifest": "/4T/CXY/Neural_Gaffer_original/external_sources/manifests/ecommerce_external_2000.json",
   "sources": [
     {
       "source_id": "abo",
       "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/ecommerce/abo",
-      "target_count": 980,
+      "target_count": 1980,
       "extensions": [".glb", ".gltf"],
       "include_keywords": [],
       "exclude_keywords": []

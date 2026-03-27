@@ -64,6 +64,12 @@ class Args:
     num_gpus: int = -1
     """number of gpus to use. -1 means all available gpus"""
 
+    expected_views: int = 12
+    """Expected number of camera views for a completed render."""
+
+    expected_lighting_per_view: int = 16
+    """Expected number of lighting conditions per view for a completed render."""
+
 
 def load_model_map(input_models_path: str) -> Dict[str, str]:
     with open(input_models_path, "r") as f:
@@ -170,10 +176,39 @@ def resolve_render_queue(model_map: Dict[str, str], max_objects: int, seed: int)
     return model_items
 
 
+def count_matches(path: Path, pattern: str) -> int:
+    return sum(1 for _ in path.glob(pattern))
+
+
+def summarize_render_output(path: Path, expected_views: int, expected_lighting_per_view: int) -> Dict[str, int]:
+    expected_rgb = expected_views * expected_lighting_per_view
+    return {
+        "rgb_count": count_matches(path, "???_???_*.png"),
+        "rt_count": count_matches(path, "*_RT.npy"),
+        "normal_count": count_matches(path, "normal_*.png") + count_matches(path, "???_normals.png"),
+        "random_lighting_count": count_matches(path, "random_lighting_*.png"),
+        "expected_rgb": expected_rgb,
+        "expected_views": expected_views,
+    }
+
+
+def render_output_is_complete(path: Path, expected_views: int, expected_lighting_per_view: int) -> bool:
+    if not path.is_dir():
+        return False
+    summary = summarize_render_output(path, expected_views, expected_lighting_per_view)
+    return (
+        summary["rgb_count"] >= summary["expected_rgb"]
+        and summary["rt_count"] >= summary["expected_views"]
+        and summary["normal_count"] >= summary["expected_views"]
+        and summary["random_lighting_count"] >= summary["expected_views"]
+    )
+
+
 def worker(queue: multiprocessing.JoinableQueue, count: multiprocessing.Value, gpu: int, s3: Optional[boto3.client]) -> None:
     while True:
         item = queue.get()
         if item is None:
+            queue.task_done()
             break
 
         try:
@@ -185,11 +220,19 @@ def worker(queue: multiprocessing.JoinableQueue, count: multiprocessing.Value, g
                     objaverse_root=args.objaverse_root,
                     download_missing=args.download_missing,
                 )
-            view_path = os.path.join(OUT_DIR, uid)
-            if os.path.exists(view_path):
+            view_path = Path(OUT_DIR) / uid
+            if render_output_is_complete(view_path, args.expected_views, args.expected_lighting_per_view):
                 print("========", uid, "rendered", "========")
-                queue.task_done()
+                with count.get_lock():
+                    count.value += 1
                 continue
+            if view_path.exists():
+                summary = summarize_render_output(view_path, args.expected_views, args.expected_lighting_per_view)
+                print(f"[render-reset-incomplete] uid={uid} summary={summary}")
+                if view_path.is_dir():
+                    shutil.rmtree(view_path, ignore_errors=True)
+                else:
+                    view_path.unlink(missing_ok=True)
 
             lighting_dir = args.lighting_dir
             print(f"[render-start] uid={uid} gpu={gpu} object_path={object_path}")
