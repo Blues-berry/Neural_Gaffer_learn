@@ -1,0 +1,495 @@
+\documentclass[UTF8,a4paper]{ctexart}
+
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{indentfirst}
+\usepackage{hyperref}
+\usepackage{newtxtext,newtxmath}
+
+% =========================================================
+% CAD/Graphics / 图形仿真大会 模板骨架
+% 说明：
+% 1. 这是基于现有 .doc 模板可提取信息整理出的 LaTeX 骨架。
+% 2. 精确字号、页边距、行距仍需最终对照 Word 模板微调。
+% 3. 推荐使用 XeLaTeX 编译；若本机缺少中文字体，可先用默认字体。
+% =========================================================
+
+\setlength{\parindent}{2em}
+\setstretch{1.15}
+\setlist{nosep}
+
+% 如果本机有 Windows 中文字体，可取消注释并进一步贴近 Word 模板：
+% \setCJKmainfont{SimSun}
+% \setCJKsansfont{SimHei}
+% \setmainfont{Times New Roman}
+
+\captionsetup[figure]{name={Fig.},labelsep=space,font=small}
+\captionsetup[table]{name={Tab.},labelsep=space,font=small}
+
+\titleformat{\section}{\bfseries\zihao{4}}{\thesection}{0.75em}{}
+\titleformat{\subsection}{\bfseries\zihao{-4}}{\thesubsection}{0.75em}{}
+\titleformat{\subsubsection}{\bfseries\zihao{-4}}{\thesubsubsection}{0.75em}{}
+
+\titlespacing*{\section}{0pt}{1.0ex plus 0.5ex minus 0.2ex}{0.8ex}
+\titlespacing*{\subsection}{0pt}{0.8ex plus 0.3ex minus 0.2ex}{0.6ex}
+\titlespacing*{\subsubsection}{0pt}{0.6ex plus 0.3ex minus 0.2ex}{0.4ex}
+
+\newcommand{\papertitle}{Foreground-Mask-Aware Relative Highlight Guidance for Robust Object Relighting}
+\newcommand{\paperauthora}{作者甲$^{1,3}$}
+\newcommand{\paperauthorb}{作者乙$^{2}$}
+\newcommand{\affiliation}{
+  $^{1}$单位一，城市，邮编，中国\\
+  $^{2}$单位二，城市，邮编，中国\\
+  $^{3}$单位三，城市，邮编，中国
+}
+
+\begin{document}
+
+\begin{center}
+{\bfseries\zihao{3} \papertitle \par}
+\vspace{1em}
+{\zihao{-4} \paperauthora \qquad \paperauthorb \par}
+\vspace{0.75em}
+{\zihao{5} \affiliation \par}
+\end{center}
+
+\vspace{1em}
+
+\noindent\textbf{Abstract}\quad
+Diffusion-based object relighting has shown promising performance under diverse illumination conditions, yet its highlight supervision often becomes unstable for specular objects, wide soft highlight lobes, and random area-light settings. This issue is amplified when foreground extraction relies on white-background heuristics and when highlight regions are defined only by absolute brightness. We present a foreground-mask-aware relative highlight guidance framework for robust object relighting without increasing inference complexity. Our method first prioritizes explicit foreground masks and uses white-background thresholding only as a fallback. It then defines highlight responses in a local relative-intensity space, estimates foreground-only quantile thresholds from lightly blurred signals, and keeps the final highlight score on the original image domain. In addition, we introduce an image-space highlight guidance branch to provide direct RGB-level supervision for specular structures. We organize the training and evaluation protocol across the \textit{official}, \textit{official-2000}, \textit{ecommerce}, and \textit{3D-FUTURE} splits to analyze in-domain, product-domain, and cross-domain generalization. The planned experiments target both highlight stability and relighting quality under unseen-object, unseen-environment, and random-area-light settings.
+
+\vspace{0.5em}
+
+\noindent\textbf{Keywords:}\quad
+object relighting; diffusion model; highlight supervision; specular appearance; domain generalization
+
+\section{Introduction}
+
+Object relighting aims to synthesize the appearance of an object under novel illumination while preserving geometry, material perception, and local visual details. Recent diffusion-based methods have substantially improved the realism and robustness of relighting results, making them attractive for graphics, e-commerce content production, and controllable image editing. However, existing systems remain fragile when the target object contains strong specular components or when the lighting condition produces broad and soft highlight patterns. In those cases, highlight supervision may drift away from the physically plausible foreground region, causing unstable glossy responses, washed-out reflections, or under-enhanced highlight boundaries.
+
+A key observation in our project is that this failure mode is not mainly caused by a missing large architecture component, but by how highlight supervision is defined and applied. When highlight regions are identified only by absolute brightness thresholds, the estimated supervision can be easily contaminated by white backgrounds, foreground cropping errors, and unusually bright conditioning images. The problem becomes more severe in random area-light conditions, where highlight energy is spatially broader and less sharply localized than point-light-like patterns.
+
+To address this issue, we focus on stabilizing highlight supervision itself. Rather than redesigning the full relighting backbone, we introduce a foreground-mask-aware relative highlight guidance strategy. The method explicitly prioritizes alpha or foreground masks, constructs relative highlight measures within the valid foreground region, estimates thresholds through foreground-only quantiles, and uses light Gaussian smoothing only for threshold estimation rather than for the final score computation. We further retain an image-space highlight guidance branch that directly supervises high-information RGB cues for specular structures.
+
+Following the submission plan, we organize the paper around a clean problem statement and a consistent baseline protocol. All comparisons are aligned to the baseline run `7cn19b1e` in the `train_neural_gaffer_highlight_gpu1` project. We evaluate the method under standard held-out settings as well as product-domain and cross-domain tests based on `official`, `ecommerce`, and `3D-FUTURE`.
+
+The main contributions of this paper are summarized as follows:
+
+\begin{enumerate}
+\item We identify a practical failure mode of diffusion-based object relighting: highlight supervision becomes unstable under specular and area-light conditions, especially when foreground extraction and absolute brightness thresholding are unreliable.
+\item We propose a foreground-mask-aware relative highlight guidance framework that combines foreground-priority masking, relative highlight definition, foreground-only quantile thresholding, blur-only threshold estimation, and image-space highlight supervision.
+\item We establish an evaluation protocol that separates method ablation, training-data scaling, product-domain adaptation, and cross-domain testing, enabling a clearer analysis of highlight stability and object-relighting generalization.
+\end{enumerate}
+
+\section{Related Work}
+
+This work is related to three research directions: object relighting, diffusion-based conditional image generation, and highlight- or specular-aware appearance supervision.
+
+\subsection{Object Relighting}
+
+Object relighting methods aim to modify scene illumination while keeping object identity and material appearance consistent. Earlier approaches often relied on inverse rendering, reflectance decomposition, or explicit physical assumptions. More recent learning-based systems reduce the need for explicit scene reconstruction, but their performance still depends on how lighting cues and material-dependent responses are represented during training.
+
+\subsection{Diffusion-Based Conditional Generation}
+
+Diffusion models provide strong generative priors and have recently improved many image-to-image translation tasks, including relighting and view-conditioned synthesis. Their iterative denoising process is effective at preserving natural image statistics, yet fine-grained supervision remains important for controlling difficult structures such as glossy highlights. In relighting settings, unstable local supervision may lead to visually plausible but materially incorrect outputs.
+
+\subsection{Specular and Highlight Supervision}
+
+Specular appearance is challenging because highlights are spatially sparse, shape-dependent, and highly sensitive to illumination changes. Existing supervision strategies frequently rely on global luminance heuristics or thresholded masks. These choices can work for relatively clean settings, but they may become unreliable when wide soft highlights, random area lights, and white-background crops coexist. Our method addresses this problem by re-defining highlight guidance in a foreground-aware and relative-intensity manner.
+
+\section{Problem Setup and Data Protocol}
+
+We study conditional object relighting. Given an input object image $x$, a target illumination condition $c$, and the ground-truth relit image $y$, the model learns a mapping
+\begin{equation}
+\hat{y} = f_{\theta}(x, c),
+\end{equation}
+where $\hat{y}$ should preserve object identity and geometry while matching the target lighting pattern.
+
+\subsection{Failure Mode of Highlight Supervision}
+
+The target problem is a recurring failure mode in diffusion-based object relighting:
+
+\begin{enumerate}
+\item highlight supervision becomes sensitive to foreground-background separation;
+\item absolute-brightness thresholds are unstable under broad soft highlight lobes;
+\item conditioning images with unusual lighting can bias the estimated highlight response;
+\item the random-area-light split exposes this instability more clearly than standard settings.
+\end{enumerate}
+
+\subsection{Notation}
+
+Let $M \in \{0,1\}^{H \times W}$ denote the foreground mask, let $I$ denote an image, and let $B(\cdot)$ denote a light Gaussian blur operator used only in threshold estimation. We use $Q_q(\cdot)$ to denote the $q$-quantile computed over valid foreground pixels. The relighting model is trained with reconstruction and highlight-related objectives over the foreground region.
+
+\subsection{Data Protocol}
+
+Following the project plan, we separate training and evaluation into the following stages:
+
+\begin{enumerate}
+\item \textbf{Method ablation:} `official-1000`, used for all core ablations and comparison against the correct baseline.
+\item \textbf{Main-model scaling:} `official-1000 + official-2000`, used to verify that the gains persist with larger same-domain training data.
+\item \textbf{Product-domain enhancement:} either a balanced mix with `ecommerce-1000` or a domain-specific finetuning stage from the main model.
+\item \textbf{Cross-domain test:} `3D-FUTURE` held-out evaluation, used first as a test-only benchmark rather than a main training source.
+\end{enumerate}
+
+For consistency, all key conclusions in the paper should be anchored to the correct baseline run `7cn19b1e`.
+
+\section{Method}
+
+Our method is designed to stabilize highlight supervision while keeping the inference-time relighting pipeline unchanged. The overall framework contains five components: foreground-priority masking, relative highlight definition, quantile-based thresholding, blur-only threshold estimation, and image-space highlight guidance.
+
+\subsection{Overall Framework}
+
+The overall training pipeline can be summarized as:
+
+\begin{enumerate}
+\item extract a reliable foreground support from explicit alpha or mask annotations whenever available;
+\item compute a local relative highlight measure within the valid foreground region;
+\item estimate a stable threshold from a lightly smoothed signal and foreground-only quantiles;
+\item form image-space highlight guidance targets without replacing the original RGB supervision;
+\item optimize the diffusion relighting model with reconstruction and highlight-aware losses.
+\end{enumerate}
+
+\subsection{Foreground-Mask-Aware Supervision}
+
+We prioritize explicit alpha or segmentation masks for supervision. White-background thresholding is used only as a fallback when explicit masks are unavailable. This design reduces leakage from background pixels and prevents high-intensity white regions from being misclassified as highlights.
+
+Let $M$ be the valid foreground mask. All highlight statistics are computed only on pixels satisfying $M=1$.
+
+\begin{equation}
+M(p)=
+\begin{cases}
+1, & \text{if an explicit alpha/mask marks } p \text{ as foreground},\\
+\mathbb{I}\!\left(\min\nolimits_c I_c(p) < \tau_{\text{bg}}\right), & \text{otherwise},
+\end{cases}
+\end{equation}
+where $\tau_{\text{bg}}$ is the fallback white-background threshold.
+
+\subsection{Relative Highlight Definition}
+
+Instead of defining highlights only by absolute luminance, we use a relative highlight representation that emphasizes local intensity deviation within the foreground. A generic form can be written as
+\begin{equation}
+S_{\text{rel}}(p) = \phi\big(I(p), \mathcal{N}(p), M\big),
+\end{equation}
+where $p$ denotes a pixel, $\mathcal{N}(p)$ is a local neighborhood, and $\phi$ measures relative brightness contrast. This design is intended to better capture broad but meaningful specular responses.
+
+In the current implementation, the relative mode is the foreground-normalized local difference:
+\begin{equation}
+\mu_{\text{fg}}(p)=
+\frac{\sum_{q \in \mathcal{N}(p)} M(q)\,L(q)}
+{\sum_{q \in \mathcal{N}(p)} M(q)+\varepsilon},
+\qquad
+S_{\text{rel}}(p)=L(p)-\mu_{\text{fg}}(p),
+\end{equation}
+where $L$ denotes luminance and $\varepsilon$ is a small constant for numerical stability.
+
+\subsection{Foreground Quantile Thresholding}
+
+The highlight threshold is estimated only from valid foreground pixels:
+\begin{equation}
+\tau = Q_q \big( \{ B(I(p)) \mid M(p)=1 \} \big),
+\end{equation}
+where $q$ is the foreground quantile. This prevents background pixels from distorting the threshold and improves stability across heterogeneous object categories.
+
+\subsection{Blur-Only Threshold Estimation}
+
+Gaussian smoothing is used only to obtain a more stable threshold estimate:
+
+\begin{equation}
+\tilde{I} = B(I), \qquad \tau = Q_q(\tilde{I} \odot M).
+\end{equation}
+
+The final highlight score is still computed from the original image domain rather than from the blurred signal. This keeps fine highlight boundaries and avoids over-smoothing the supervision target.
+
+\begin{equation}
+T(p)=
+\begin{cases}
+\tau, & \text{absolute mode},\\
+\mu_{\text{fg}}(p)+\tau, & \text{difference mode},
+\end{cases}
+\end{equation}
+which converts the estimated quantile threshold back to the luminance domain.
+
+\begin{equation}
+H(p)=
+\left(
+\frac{\max\left(L(p)-T(p), 0\right)}
+\max\left(1-T(p), \epsilon\right)}
+\right)^\gamma
+\cdot M(p),
+\end{equation}
+where $H$ is the soft highlight score used by the auxiliary guidance branch.
+
+\subsection{Image-Space Highlight Guidance}
+
+In addition to the standard relighting objective, we maintain an image-space highlight guidance branch that directly supervises RGB-space highlight behavior. This branch provides more informative gradients than a purely latent replacement strategy and matches the conclusion of the project plan that image-space guidance should remain the main method line.
+
+When the efficiency variant is enabled, a lightweight latent probe is trained to predict the same highlight score from predicted clean latents:
+\begin{equation}
+\hat{H}_{\text{latent}} = P_\psi(\hat{z}_0),
+\end{equation}
+where $\hat{z}_0$ is the predicted clean latent and $P_\psi$ denotes the latent highlight probe.
+
+\subsection{Training Objective}
+
+The full objective is written as
+\begin{equation}
+\mathcal{L} = \lambda_{\text{rec}}\mathcal{L}_{\text{rec}} + \lambda_{\text{perc}}\mathcal{L}_{\text{perc}} + \lambda_{\text{hl}}\mathcal{L}_{\text{highlight}}.
+\end{equation}
+
+\begin{equation}
+\mathcal{L}_{\text{rec}} = \| (\hat{y} - y) \odot M \|_1.
+\end{equation}
+
+\begin{equation}
+\mathcal{L}_{\text{highlight}} = \| G(\hat{y}, M) - G(y, M) \|_1,
+\end{equation}
+where $G(\cdot)$ denotes the foreground-mask-aware relative highlight guidance operator. The exact operator and hyperparameters can be instantiated to match the final implementation.
+
+\begin{equation}
+\mathcal{L}_{\text{probe}}=
+\text{BCE}\!\left(\hat{H}_{\text{latent}}, H(y)\right).
+\end{equation}
+
+\begin{equation}
+\mathcal{L}_{\text{hybrid}}=
+\mathcal{L}_{\text{diff}}
+\,+\,\alpha(t)\mathcal{L}_{\text{highlight}}
+\,+\,\beta(t)\mathcal{L}_{\text{probe}},
+\end{equation}
+where $\alpha(t)$ decays after the transition start step and $\beta(t)$ increases accordingly.
+
+\section{Experiments}
+
+\subsection{Experimental Goals}
+
+The experiments are designed to answer four questions:
+
+\begin{enumerate}
+\item Does the proposed main method improve highlight stability over the correct baseline?
+\item Which component contributes most to the performance gains?
+\item Are the gains preserved when scaling training data and moving to the product domain?
+\item How does the method generalize to unseen domains such as `3D-FUTURE`?
+\end{enumerate}
+
+\subsection{Implementation Details}
+
+All comparisons should use the correct baseline configuration from the `train_neural_gaffer_highlight_gpu1` project. The main baseline run is `7cn19b1e`. Metrics should include PSNR, SSIM, and LPIPS, together with the split-wise relighting scores on `uu`, `us`, `ra`, `tu`, and `train`.
+
+\subsection{Current Evidence-Aligned Ablation on \texttt{official-1000}}
+
+The current repository does not yet contain a perfectly clean one-factor-at-a-time ablation for every component. Instead, Table~1 records the best currently available milestone runs that correspond to the major method stages already implemented in code and discussed in the project notes.
+
+\begin{table}[htbp]
+\centering
+\caption{Current evidence-aligned ablation on `official-1000`}
+\begin{tabular}{p{4.8cm}ccccc}
+\toprule
+Method Variant & uu & us & ra & tu & train \\
+\midrule
+Original baseline (`7cn19b1e`) & 31.1904 & 30.1492 & 28.3970 & 29.5503 & 28.4476 \\
++ image-space highlight guidance, fixed threshold (`qju56ygl`) & 30.0675 & 29.3631 & 26.5557 & 30.0620 & 30.0214 \\
++ quantile threshold + random-light conditioning (`nsniycxi`) & 30.7810 & 29.5849 & 25.4691 & 29.6327 & 27.6715 \\
++ quantile refinement (`q=0.88`) + mask fallback cleanup (`jbhdfvfc`) & \textbf{31.7993} & 30.6854 & 28.4180 & 28.9659 & \textbf{30.4835} \\
++ blur-only threshold estimation (`spuru5qy`) & 31.6393 & \textbf{30.7137} & 28.9569 & 28.8678 & 28.9013 \\
++ local relative highlight definition (`fi04f78e`) & 31.4897 & 30.4535 & 28.0178 & 29.4746 & 28.6971 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Note:} this table is evidence-aligned rather than a final clean ablation. A camera-ready version should still add same-budget single-factor runs for foreground-mask priority, blur-only estimation, and local-relative highlight guidance.
+
+\subsection{Reference Strong Runs}
+
+\begin{table}[htbp]
+\centering
+\caption{Representative runs under the corrected baseline protocol}
+\begin{tabular}{lccccc}
+\toprule
+Run & uu & us & ra & tu & train \\
+\midrule
+`7cn19b1e` baseline & 31.1904 & 30.1492 & 28.3970 & 29.5503 & 28.4476 \\
+`jbhdfvfc` main held-out strong run & 31.7993 & 30.6854 & 28.4180 & 28.9659 & 30.4835 \\
+`spuru5qy` balanced strong run & 31.6393 & 30.7137 & 28.9569 & 28.8678 & 28.9013 \\
+`fi04f78e` clean 40k main-line run & 31.4897 & 30.4535 & 28.0178 & 29.4746 & 28.6971 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Training Data Strategy}
+
+The second experiment separates method gains from data scaling and product-domain enhancement.
+
+\begin{table}[htbp]
+\centering
+\caption{Training data strategy comparison}
+\begin{tabular}{lccc}
+\toprule
+Training Protocol & Official Held-out & Ecommerce Held-out & 3D-FUTURE Held-out \\
+\midrule
+`official-1000` & TBD & TBD & TBD \\
+`official-1000 + official-2000` & TBD & TBD & TBD \\
+`official + official\_2000 + ecommerce` balanced mix & TBD & TBD & TBD \\
+main model $\rightarrow$ `ecommerce` finetune & TBD & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cross-Domain Generalization}
+
+The third experiment evaluates whether the proposed highlight supervision transfers beyond the training domain.
+
+\begin{table}[htbp]
+\centering
+\caption{Cross-domain generalization across official, ecommerce, and 3D-FUTURE}
+\begin{tabular}{lccc}
+\toprule
+Method & official & ecommerce & 3D-FUTURE \\
+\midrule
+Baseline & TBD & TBD & TBD \\
+Full main method & TBD & TBD & TBD \\
+Hybrid probe distillation & TBD & TBD & TBD \\
+Pure latent probe replacement & TBD & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Efficiency Variants}
+
+Probe-based alternatives are treated as efficiency variants rather than the main contribution.
+
+\begin{table}[htbp]
+\centering
+\caption{Efficiency-quality comparison of main and auxiliary variants}
+\begin{tabular}{lccccc}
+\toprule
+Method & Peak VRAM & Steps/hour & uu & us & ra \\
+\midrule
+Image-space main method (`fi04f78e`) & TBD & TBD & 31.4897 & 30.4535 & 28.0178 \\
+Hybrid probe distillation (`xkmlb19f`) & TBD & TBD & 30.9751 & 29.5747 & \textbf{29.2093} \\
+Pure latent probe replacement (`iepfybfu`) & TBD & TBD & 30.0771 & 27.6759 & 29.0589 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Qualitative Evaluation}
+
+Following the project plan, the qualitative section should include at least five figure groups:
+
+\begin{enumerate}
+\item failure cases of the original baseline under area-light and soft-highlight conditions;
+\item the method overview figure;
+\item official held-out visual comparisons on `uu`, `us`, and `ra`;
+\item cross-domain comparisons on `official`, `ecommerce`, and `3D-FUTURE`;
+\item efficiency-quality comparison among image-space, hybrid, and pure probe variants.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{4.7cm}\rule{0.92\linewidth}{0pt}}
+\caption{Problem-definition figure. Reserve panels for original baseline failures under wide soft highlights, white-background interference, and random area-light conditions.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{5.0cm}\rule{0.92\linewidth}{0pt}}
+\caption{Method overview figure. Reserve blocks for foreground-mask priority, local relative highlight computation, blur-only threshold estimation, image-space highlight guidance, and optional latent-probe distillation.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{5.0cm}\rule{0.92\linewidth}{0pt}}
+\caption{Official held-out comparison figure. Reserve one row each for `uu`, `us`, and `ra`, and one column each for input, target lighting, ground truth, baseline, proposed method, and zoomed highlight crop.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{5.0cm}\rule{0.92\linewidth}{0pt}}
+\caption{Cross-domain comparison figure. Reserve columns for `official`, `ecommerce`, and `3D-FUTURE`, each with baseline, proposed result, and local highlight zoom-ins.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{4.6cm}\rule{0.92\linewidth}{0pt}}
+\caption{Efficiency-quality figure. Reserve panels for image-space main method, hybrid probe distillation, and pure latent replacement, plus a small bar chart for speed and peak memory.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{4.6cm}\rule{0.92\linewidth}{0pt}}
+\caption{Diagnostic figure. Reserve rows for foreground mask, threshold map, highlight score, and final prediction.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{4.5cm}\rule{0.92\linewidth}{0pt}}
+\caption{Failure-case figure. Reserve examples where imperfect masks, extreme broad highlights, or severe domain shift still produce unstable results.}
+\end{figure}
+
+\section{Planned Result Presentation}
+
+The paper should present results in three layers:
+
+\begin{enumerate}
+\item evidence-aligned ablation based on the runs already available in the repository;
+\item a final clean same-budget ablation after missing one-factor runs are completed;
+\item a separate efficiency section for hybrid and pure latent probe variants.
+\end{enumerate}
+
+For visual comparison, each panel should contain the input image, target illumination, ground truth, baseline result, proposed result, and at least one enlarged highlight crop. The `ra` split should be prioritized because it best exposes the target failure mode.
+
+\section{Current Experimental Status}
+
+Based on the runs currently available in the repository:
+
+\begin{enumerate}
+\item `jbhdfvfc` is the strongest main held-out run and should be treated as the current main-method anchor.
+\item `spuru5qy` is the most balanced variant and is especially useful when emphasizing random-area-light robustness.
+\item `fi04f78e` is the cleanest available relative-highlight run and should be used to explain the local-relative formulation.
+\item `xkmlb19f` and `iepfybfu` should remain efficiency-side evidence rather than main-method evidence.
+\end{enumerate}
+
+\section{Discussion and Limitations}
+
+The proposed framework improves highlight supervision without modifying the inference-time complexity of the main relighting model, which makes it attractive for practical use. Still, several limitations remain.
+
+\begin{enumerate}
+\item The method still depends on the quality of explicit masks or fallback foreground estimation.
+\item Relative highlight guidance improves stability but does not fully solve all material ambiguities under extreme lighting.
+\item The current paper focuses on supervision design rather than explicit physical disentanglement of specular and diffuse transport.
+\item Larger architectural changes, light-probe-conditioned diffusion, and explicit specular-diffuse decomposition are intentionally left for future work.
+\end{enumerate}
+
+\section{Conclusion}
+
+This paper targets a concrete failure mode of diffusion-based object relighting: unstable highlight supervision under specular and area-light conditions. We propose a foreground-mask-aware relative highlight guidance framework that combines foreground-priority masking, relative highlight definition, quantile thresholding, blur-only threshold estimation, and image-space highlight supervision. The current repository already contains encouraging evidence that this supervision design improves the main held-out splits and stabilizes difficult specular cases. The remaining work is to complete the clean ablation matrix, finish the cross-domain experiments, and replace the reserved figure slots with final paper-quality comparisons.
+
+\section*{Author Information}
+
+\noindent 作者甲，出生年份，职称或身份，研究方向，E-mail: \href{mailto:author1@example.com}{author1@example.com}
+
+\noindent 作者乙，出生年份，职称或身份，研究方向，E-mail: \href{mailto:author2@example.com}{author2@example.com}
+
+\begin{thebibliography}{99}
+
+\bibitem{ref1}
+Sun T, Xie Y. Diffusion-based object relighting with geometry-aware conditioning[J]. Journal Name, 2024, 12(3): 1--10.
+
+\bibitem{ref2}
+Author A, Author B. Specular-aware image translation for object appearance editing[C]//Proceedings of Conference Name. City: Publisher, 2023: 20--28.
+
+\bibitem{ref3}
+Author A. Deep generative models for computer graphics[M]. City: Publisher, 2022.
+
+\bibitem{ref4}
+Author A. Highlight modeling for relightable object synthesis[D]. City: University Name, 2021.
+
+\end{thebibliography}
+
+\end{document}

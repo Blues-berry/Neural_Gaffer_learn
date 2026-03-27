@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
+  <defs>
+    <style>
+      .title { font-family: Arial; font-size: 28px; font-weight: 700; fill: #1f2937; }
+      .label { font-family: Arial; font-size: 18px; font-weight: 600; fill: #111827; }
+      .small { font-family: Arial; font-size: 14px; font-weight: 400; fill: #374151; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 2.5; rx: 16; ry: 16; }
+      .accentA { fill: #e0f2fe; stroke: #0f766e; stroke-width: 2.5; rx: 16; ry: 16; }
+      .accentB { fill: #fef3c7; stroke: #b45309; stroke-width: 2.5; rx: 16; ry: 16; }
+      .accentC { fill: #ede9fe; stroke: #6d28d9; stroke-width: 2.5; rx: 16; ry: 16; }
+      .loss { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2.5; rx: 16; ry: 16; }
+      .arrow { stroke: #475569; stroke-width: 3; fill: none; marker-end: url(#m); }
+      .dash { stroke: #6b7280; stroke-width: 2.5; fill: none; stroke-dasharray: 8 8; marker-end: url(#m); }
+    </style>
+    <marker id="m" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#475569"/>
+    </marker>
+  </defs>
+
+  <rect x="20" y="20" width="1360" height="820" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>
+  <text x="48" y="62" class="title">Neural Gaffer Highlight-Aware Training Architecture</text>
+
+  <rect x="50" y="110" width="180" height="92" class="box"/>
+  <text x="93" y="145" class="label">Input Object</text>
+  <text x="93" y="170" class="label">Image x</text>
+  <text x="76" y="192" class="small">RGB object on white bg</text>
+
+  <rect x="50" y="238" width="180" height="92" class="box"/>
+  <text x="92" y="273" class="label">HDR Target</text>
+  <text x="84" y="298" class="label">Env Map c_h</text>
+  <text x="66" y="320" class="small">illumination condition</text>
+
+  <rect x="50" y="366" width="180" height="92" class="box"/>
+  <text x="92" y="401" class="label">LDR Target</text>
+  <text x="84" y="426" class="label">Env Map c_l</text>
+  <text x="71" y="448" class="small">low-range lighting cue</text>
+
+  <rect x="50" y="540" width="180" height="92" class="accentB"/>
+  <text x="82" y="575" class="label">Ground Truth</text>
+  <text x="91" y="600" class="label">Image y</text>
+  <text x="69" y="622" class="small">relit supervision target</text>
+
+  <rect x="50" y="668" width="180" height="92" class="accentB"/>
+  <text x="71" y="703" class="label">Foreground Mask</text>
+  <text x="115" y="728" class="label">M</text>
+  <text x="63" y="750" class="small">explicit mask or 0.96 fallback</text>
+
+  <rect x="300" y="128" width="170" height="70" class="accentA"/>
+  <text x="351" y="160" class="label">VAE</text>
+  <text x="322" y="184" class="small">encode x to latent</text>
+
+  <rect x="300" y="256" width="170" height="70" class="accentA"/>
+  <text x="351" y="288" class="label">VAE</text>
+  <text x="313" y="312" class="small">encode HDR env latent</text>
+
+  <rect x="300" y="384" width="170" height="70" class="accentA"/>
+  <text x="351" y="416" class="label">VAE</text>
+  <text x="312" y="440" class="small">encode LDR env latent</text>
+
+  <rect x="300" y="516" width="170" height="110" class="accentB"/>
+  <text x="336" y="548" class="label">VAE</text>
+  <text x="322" y="573" class="label">encode y</text>
+  <text x="319" y="598" class="small">sample target latent z_0</text>
+
+  <rect x="300" y="670" width="170" height="72" class="box"/>
+  <text x="343" y="703" class="label">CLIP</text>
+  <text x="318" y="727" class="small">image prompt embedding</text>
+
+  <rect x="540" y="156" width="185" height="64" class="box"/>
+  <text x="579" y="190" class="label">Image Latent</text>
+  <text x="588" y="212" class="small">z_x</text>
+
+  <rect x="540" y="270" width="185" height="64" class="box"/>
+  <text x="579" y="304" class="label">HDR Latent</text>
+  <text x="585" y="326" class="small">z_h</text>
+
+  <rect x="540" y="384" width="185" height="64" class="box"/>
+  <text x="579" y="418" class="label">LDR Latent</text>
+  <text x="585" y="440" class="small">z_l</text>
+
+  <rect x="540" y="522" width="185" height="94" class="accentB"/>
+  <text x="565" y="555" class="label">Diffusion Forward</text>
+  <text x="560" y="579" class="small">sample noise and timestep t</text>
+  <text x="577" y="602" class="small">produce noisy latent x_t</text>
+
+  <rect x="810" y="210" width="250" height="280" class="accentC"/>
+  <text x="860" y="248" class="label">Highlight-Aware U-Net</text>
+  <text x="842" y="280" class="small">concat [x_t, z_x, z_h, z_l] on channels</text>
+  <text x="862" y="308" class="small">cross-attend to CLIP prompt embedding</text>
+  <text x="864" y="336" class="small">predict epsilon or velocity</text>
+  <text x="855" y="364" class="small">recover clean latent estimate x_0_hat</text>
+  <rect x="850" y="395" width="170" height="65" fill="#ffffff" stroke="#7c3aed" stroke-width="2" rx="12" ry="12"/>
+  <text x="891" y="430" class="label">pred_x0_latent</text>
+  <text x="918" y="452" class="small">x_0_hat</text>
+
+  <rect x="1110" y="176" width="210" height="90" class="loss"/>
+  <text x="1164" y="210" class="label">Diffusion Loss</text>
+  <text x="1139" y="234" class="small">MSE(model_pred, target)</text>
+  <text x="1134" y="256" class="small">optionally reweighted in highlight regions</text>
+
+  <rect x="1110" y="314" width="210" height="100" class="accentA"/>
+  <text x="1161" y="348" class="label">VAE Decode</text>
+  <text x="1140" y="372" class="small">decode x_0_hat to image y_hat</text>
+  <text x="1142" y="394" class="small">used by image-space highlight branch</text>
+
+  <rect x="1110" y="458" width="210" height="94" class="loss"/>
+  <text x="1141" y="492" class="label">Image-Space Highlight Loss</text>
+  <text x="1144" y="516" class="small">compare y_hat and y with H-guided weights</text>
+  <text x="1183" y="538" class="small">main method branch</text>
+
+  <rect x="1110" y="604" width="210" height="94" class="box"/>
+  <text x="1155" y="638" class="label">Latent Probe</text>
+  <text x="1138" y="662" class="small">optional BCE supervision on x_0_hat</text>
+  <text x="1143" y="684" class="small">hybrid / replacement efficiency branch</text>
+
+  <rect x="820" y="590" width="240" height="180" class="accentB"/>
+  <text x="851" y="626" class="label">Highlight Supervision Branch</text>
+  <text x="856" y="654" class="small">compute H from y and M in image domain</text>
+  <text x="851" y="680" class="small">foreground-aware quantile threshold</text>
+  <text x="854" y="706" class="small">blur-only threshold estimation</text>
+  <text x="878" y="732" class="small">local relative highlight score</text>
+
+  <path d="M230 156 L300 156" class="arrow"/>
+  <path d="M230 284 L300 284" class="arrow"/>
+  <path d="M230 412 L300 412" class="arrow"/>
+  <path d="M230 578 L300 578" class="arrow"/>
+  <path d="M230 704 L300 704" class="arrow"/>
+
+  <path d="M470 163 L540 188" class="arrow"/>
+  <path d="M470 291 L540 302" class="arrow"/>
+  <path d="M470 419 L540 416" class="arrow"/>
+  <path d="M470 570 L540 570" class="arrow"/>
+  <path d="M470 706 L810 290" class="dash"/>
+
+  <path d="M725 188 L810 260" class="arrow"/>
+  <path d="M725 302 L810 302" class="arrow"/>
+  <path d="M725 416 L810 344" class="arrow"/>
+  <path d="M725 570 L810 386" class="arrow"/>
+
+  <path d="M1060 428 L1110 221" class="arrow"/>
+  <path d="M1060 428 L1110 364" class="arrow"/>
+  <path d="M1215 266 L1215 314" class="arrow"/>
+  <path d="M1215 414 L1215 458" class="arrow"/>
+  <path d="M1060 428 L1110 651" class="dash"/>
+
+  <path d="M230 578 L820 650" class="arrow"/>
+  <path d="M230 704 L820 708" class="arrow"/>
+  <path d="M1060 680 L1110 506" class="arrow"/>
+  <path d="M1060 680 L1110 651" class="arrow"/>
+
+  <text x="65" y="804" class="small">Main training logic extracted from current code: noisy target latent + image latent + HDR/LDR env latents are concatenated and fed to the U-Net; highlight supervision is computed from image-domain targets and reused by image-space loss and optional latent probe branches.</text>
+</svg>
