@@ -1,0 +1,18 @@
+{
+  "theme": "ecommerce",
+  "subset": "ecommerce_subset",
+  "manifest_count": 1076,
+  "raw_render_count": 1112,
+  "ready_raw_object_count": 772,
+  "partial_raw_object_count": 255,
+  "packaged_model_count": 866,
+  "image_object_dir_count": 803,
+  "complete_train_object_count": 788,
+  "train_image_object_count": 787,
+  "lighting_ldr_count": 773,
+  "lighting_hdr_rescaled_count": 773,
+  "lighting_hdr_raw_count": 773,
+  "target_count": 2000,
+  "render_completion_ratio": 0.556,
+  "training_completion_ratio": 0.3935
+}

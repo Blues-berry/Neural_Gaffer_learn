@@ -1,0 +1,8 @@
+{
+  "dataset": "three_future",
+  "split_method": "sorted_5pct_min10",
+  "total_trainable": 582,
+  "train_count": 553,
+  "val_seen_count": 29,
+  "val_unseen_count": 29
+}

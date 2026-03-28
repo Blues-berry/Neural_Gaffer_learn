@@ -1,0 +1,18 @@
+{
+  "theme": "landscape",
+  "subset": "landscape_subset",
+  "manifest_count": 1000,
+  "raw_render_count": 1084,
+  "ready_raw_object_count": 619,
+  "partial_raw_object_count": 405,
+  "packaged_model_count": 0,
+  "image_object_dir_count": 169,
+  "complete_train_object_count": 168,
+  "train_image_object_count": 168,
+  "lighting_ldr_count": 169,
+  "lighting_hdr_rescaled_count": 169,
+  "lighting_hdr_raw_count": 169,
+  "target_count": 1000,
+  "render_completion_ratio": 1.084,
+  "training_completion_ratio": 0.168
+}

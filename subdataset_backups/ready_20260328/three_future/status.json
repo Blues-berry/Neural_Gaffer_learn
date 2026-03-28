@@ -1,0 +1,74 @@
+{
+  "subset": "three_future_standalone",
+  "dataset_name": "3D-FUTURE",
+  "stage": "preprocessing",
+  "scene_archive_exists": true,
+  "model_archive_exists": true,
+  "scene_archive_size_bytes": 20525994603,
+  "model_archive_size_bytes": 46560191742,
+  "scene_entry_count": 40483,
+  "model_asset_dir_count": 16563,
+  "manifest_count": 16563,
+  "target_count": 16563,
+  "raw_render_count": 16332,
+  "ready_raw_object_count": 1125,
+  "partial_raw_object_count": 10290,
+  "image_object_dir_count": 951,
+  "complete_train_object_count": 951,
+  "train_image_object_count": 951,
+  "lighting_ldr_count": 516,
+  "lighting_hdr_rescaled_count": 516,
+  "lighting_hdr_raw_count": 516,
+  "render_started": true,
+  "preprocess_started": true,
+  "workspace_dir": "subdataset/standalone/three_future",
+  "train_img_dir": "training_data/images/training_img_data_three_future_standalone",
+  "train_lighting_dir": "training_data/lighting/training_lighting_data_three_future_standalone",
+  "raw_render_dir": "external_sources/render_raw/three_future_standalone",
+  "lighting_source_dir": "objaverse_lighting_domains/ecommerce_product",
+  "download_summary": {
+    "dataset_name": "3D-FUTURE",
+    "download_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/downloads/3d_future",
+    "network_mode_requested": "direct",
+    "artifacts": [
+      {
+        "label": "scene",
+        "path": "/4T/CXY/Neural_Gaffer_original/external_sources/downloads/3d_future/3D-FUTURE-scene.zip",
+        "requested": true,
+        "status": "failed",
+        "network_mode": null,
+        "size_bytes": 20525994603,
+        "errors": [
+          {
+            "mode": "direct",
+            "returncode": 33
+          }
+        ]
+      },
+      {
+        "label": "model",
+        "path": "/4T/CXY/Neural_Gaffer_original/external_sources/downloads/3d_future/3D-FUTURE-model.zip",
+        "requested": true,
+        "status": "downloaded",
+        "network_mode": "direct",
+        "size_bytes": 46560191742
+      }
+    ],
+    "downloaded_count": 1,
+    "failed_count": 1,
+    "total_size_bytes": 67086186345
+  },
+  "extract_summary": {},
+  "manifest_summary": {
+    "dataset_name": "3D-FUTURE",
+    "root_dir": "/4T/CXY/Neural_Gaffer_original/external_sources/downloads/3d_future/model_extracted/3D-FUTURE-model",
+    "manifest_count": 16563,
+    "extension_summary": {
+      ".obj": 16563
+    },
+    "output_json": "/4T/CXY/Neural_Gaffer_original/subdataset/standalone/three_future/manifests/three_future_model_manifest.json",
+    "object_list_json": "/4T/CXY/Neural_Gaffer_original/subdataset/standalone/three_future/manifests/three_future_model_object_list.json"
+  },
+  "render_completion_ratio": 0.9861,
+  "training_completion_ratio": 0.0574
+}

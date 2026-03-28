@@ -1,0 +1,8 @@
+{
+  "dataset": "ecommerce",
+  "split_method": "sorted_5pct_min10",
+  "total_trainable": 753,
+  "train_count": 716,
+  "val_seen_count": 37,
+  "val_unseen_count": 37
+}

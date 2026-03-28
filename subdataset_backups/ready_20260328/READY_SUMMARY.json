@@ -1,0 +1,61 @@
+{
+  "generated_at_utc": "2026-03-28T08:57:13Z",
+  "datasets": [
+    {
+      "dataset": "ecommerce",
+      "ready_list": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/ecommerce/subsets/ecommerce_subset/training/preprocess_ready_objects.json",
+      "img_src": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset",
+      "lighting_src": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset",
+      "status_file": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/ecommerce/subsets/ecommerce_subset/status.json",
+      "ready_count": 769,
+      "trainable_count": 753,
+      "generated_at_utc": "2026-03-28T08:48:00Z",
+      "train_count_after_split": 716,
+      "val_seen_count": 37,
+      "val_unseen_count": 37,
+      "split_method": "sorted_5pct_min10"
+    },
+    {
+      "dataset": "landscape",
+      "ready_list": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/landscape/subsets/landscape_subset/training/preprocess_ready_objects.json",
+      "img_src": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_landscape_subset",
+      "lighting_src": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_landscape_subset",
+      "status_file": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/landscape/subsets/landscape_subset/status.json",
+      "ready_count": 168,
+      "trainable_count": 168,
+      "generated_at_utc": "2026-03-28T08:48:02Z",
+      "train_count_after_split": 158,
+      "val_seen_count": 10,
+      "val_unseen_count": 10,
+      "split_method": "sorted_5pct_min10"
+    },
+    {
+      "dataset": "official_2000",
+      "ready_list": "/4T/CXY/Neural_Gaffer_original/subdataset/official/subsets/official_2000/training/preprocess_ready_objects.json",
+      "img_src": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_official_2000",
+      "lighting_src": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_official_2000",
+      "status_file": "/4T/CXY/Neural_Gaffer_original/subdataset/official/subsets/official_2000/status.json",
+      "ready_count": 526,
+      "trainable_count": 526,
+      "generated_at_utc": "2026-03-28T08:47:47Z",
+      "train_count_after_split": 500,
+      "val_seen_count": 26,
+      "val_unseen_count": 26,
+      "split_method": "sorted_5pct_min10"
+    },
+    {
+      "dataset": "three_future",
+      "ready_list": "/4T/CXY/Neural_Gaffer_original/subdataset/standalone/three_future/training/preprocess_ready_objects.json",
+      "img_src": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_three_future_standalone",
+      "lighting_src": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_three_future_standalone",
+      "status_file": "/4T/CXY/Neural_Gaffer_original/subdataset/standalone/three_future/status.json",
+      "ready_count": 951,
+      "trainable_count": 582,
+      "generated_at_utc": "2026-03-28T08:48:09Z",
+      "train_count_after_split": 553,
+      "val_seen_count": 29,
+      "val_unseen_count": 29,
+      "split_method": "sorted_5pct_min10"
+    }
+  ]
+}

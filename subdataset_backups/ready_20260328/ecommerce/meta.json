@@ -1,0 +1,14 @@
+{
+  "dataset": "ecommerce",
+  "ready_list": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/ecommerce/subsets/ecommerce_subset/training/preprocess_ready_objects.json",
+  "img_src": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset",
+  "lighting_src": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset",
+  "status_file": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/ecommerce/subsets/ecommerce_subset/status.json",
+  "ready_count": 769,
+  "trainable_count": 753,
+  "generated_at_utc": "2026-03-28T08:48:00Z",
+  "train_count_after_split": 716,
+  "val_seen_count": 37,
+  "val_unseen_count": 37,
+  "split_method": "sorted_5pct_min10"
+}

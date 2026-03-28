@@ -1,0 +1,8 @@
+{
+  "dataset": "official_2000",
+  "split_method": "sorted_5pct_min10",
+  "total_trainable": 526,
+  "train_count": 500,
+  "val_seen_count": 26,
+  "val_unseen_count": 26
+}

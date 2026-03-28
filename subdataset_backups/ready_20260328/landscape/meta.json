@@ -1,0 +1,14 @@
+{
+  "dataset": "landscape",
+  "ready_list": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/landscape/subsets/landscape_subset/training/preprocess_ready_objects.json",
+  "img_src": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_landscape_subset",
+  "lighting_src": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_landscape_subset",
+  "status_file": "/4T/CXY/Neural_Gaffer_original/subdataset/themes/landscape/subsets/landscape_subset/status.json",
+  "ready_count": 168,
+  "trainable_count": 168,
+  "generated_at_utc": "2026-03-28T08:48:02Z",
+  "train_count_after_split": 158,
+  "val_seen_count": 10,
+  "val_unseen_count": 10,
+  "split_method": "sorted_5pct_min10"
+}

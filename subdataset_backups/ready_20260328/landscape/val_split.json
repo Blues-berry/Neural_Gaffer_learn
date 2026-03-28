@@ -1,0 +1,8 @@
+{
+  "dataset": "landscape",
+  "split_method": "sorted_5pct_min10",
+  "total_trainable": 168,
+  "train_count": 158,
+  "val_seen_count": 10,
+  "val_unseen_count": 10
+}
