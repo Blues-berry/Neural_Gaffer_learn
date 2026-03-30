@@ -1,9 +1,9 @@
 # Fdb version 3
-["xdvipdfmx"] 1774590427 "cadgraphics_template_cn.xdv" "cadgraphics_template_cn.pdf" "cadgraphics_template_cn" 1774590437
-  "cadgraphics_template_cn.xdv" 1774590427 158380 8602963f5628e58acdf9eb9bde0ec329 "xelatex"
+["xdvipdfmx"] 1774789214 "cadgraphics_template_cn.xdv" "cadgraphics_template_cn.pdf" "cadgraphics_template_cn" 1774789224
+  "cadgraphics_template_cn.xdv" 1774789214 240528 63e140e27700f8ff5ab77bda99a3a249 "xelatex"
   (generated)
   "cadgraphics_template_cn.pdf"
-["xelatex"] 1774590424 "cadgraphics_template_cn.tex" "cadgraphics_template_cn.xdv" "cadgraphics_template_cn" 1774590437
+["xelatex"] 1774789212 "cadgraphics_template_cn.tex" "cadgraphics_template_cn.xdv" "cadgraphics_template_cn" 1774789224
   "/dev/null" 1773318056 0 d41d8cd98f00b204e9800998ecf8427e ""
   "/etc/texmf/web2c/texmf.cnf" 1774585341 475 c0e671620eb5563b2130f56340a5fde8 ""
   "/home/ubuntu/.texlive2019/texmf-var/web2c/xetex/xelatex.fmt" 1774589992 4645742 2c268abccba7ffcfebb7e9cfc93f98a4 ""
@@ -143,9 +143,9 @@
   "/usr/share/texlive/texmf-dist/tex/xelatex/xecjk/xeCJKfntef.sty" 1581719770 39610 4731f9b7ddaaa008363134b64aa17ffc ""
   "/usr/share/texlive/texmf-dist/web2c/texmf.cnf" 1581979058 38841 ce3692aa899bb693b90b87eaa5d4d84e ""
   "/usr/share/texmf/web2c/texmf.cnf" 1581979058 38841 ce3692aa899bb693b90b87eaa5d4d84e ""
-  "cadgraphics_template_cn.aux" 1774590427 10858 1f4c6dbc95a6736348bd70cb5545e5dc "xelatex"
-  "cadgraphics_template_cn.out" 1774590427 3474 3a97b7f2d19580a14d816cfd6e30992d "xelatex"
-  "cadgraphics_template_cn.tex" 1774590419 36682 3be60e8fd6d2bf153bc3b4cf62296c55 ""
+  "cadgraphics_template_cn.aux" 1774789214 15190 7f00a09045f562b0e8f22bd18ac01356 "xelatex"
+  "cadgraphics_template_cn.out" 1774789214 4764 40fed2258dd28d2b1622f3f5248c6923 "xelatex"
+  "cadgraphics_template_cn.tex" 1774789202 53313 7044dd7fcbaaf92063338dd348b27312 ""
   "figures/crops/efficiency_hybrid_ra_result.png" 1774589731 168879 3d1164e34260de9f73c997f114894c33 ""
   "figures/crops/efficiency_replacement_ra_result.png" 1774589732 126962 db65ff2e5391ed48bb6bc01b253e1a6d ""
   "figures/crops/official_ra_main_diagnostic.png" 1774589727 10902 900c7324d58d0a420259c1f36821d184 ""
@@ -159,10 +159,12 @@
   "figures/crops/problem_def_ra_failure_env.png" 1774589722 565153 29f433f587cd6941d6d5ba147f0454ba ""
   "figures/crops/problem_def_ra_failure_result.png" 1774589720 245809 c8f97d2093535973ecdef447a13c1e75 ""
   "figures/highlight_supervision_flow.png" 1774590178 279135 78ec6b2f95acae3476aac372dacfff43 ""
-  "figures/local_relative_highlight_comparison.png" 1774590177 193041 571e4b651b0e6fa5109fd7ada49ec2ee ""
+  "figures/lighting_probe_principle.png" 1774788987 134670 0d9068e76067b8f1afaf1733901fcb2d ""
+  "figures/local_relative_highlight_comparison.png" 1774788916 212965 3bd68b17e6ca900d197dfde977a1556b ""
   "figures/neural_gaffer_highlight_model.png" 1774590178 478869 693b6a8cdb8782c240290a1b0097f6e9 ""
+  "figures/official_background_teaser.png" 1774789211 689861 a22699f3f9bd73c95e7f4844bf5348c7 ""
   (generated)
-  "cadgraphics_template_cn.aux"
   "cadgraphics_template_cn.xdv"
-  "cadgraphics_template_cn.out"
+  "cadgraphics_template_cn.aux"
   "cadgraphics_template_cn.log"
+  "cadgraphics_template_cn.out"

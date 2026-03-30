@@ -745,6 +745,7 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: float = 1.0,
+        return_intermediates: bool = False,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -898,6 +899,7 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
         # 7. 扩散去噪主循环。
         # 每一步都根据当前噪声状态 + 条件信息，让 UNet 预测“应该去掉多少噪声”。
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        pred_x0 = None
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -918,7 +920,15 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # 根据 scheduler，把 x_t 更新到 x_{t-1}。
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                scheduler_output = self.scheduler.step(
+                    noise_pred,
+                    t,
+                    latents,
+                    **extra_step_kwargs,
+                    return_dict=True,
+                )
+                latents = scheduler_output.prev_sample
+                pred_x0 = getattr(scheduler_output, "pred_original_sample", None)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -928,20 +938,42 @@ class Neural_Gaffer_StableDiffusionPipeline(DiffusionPipeline):
 
         # 8. Post-processing
         has_nsfw_concept = None
+        intermediates = None
+        pred_x0_image = None
         if output_type == "latent":
             image = latents
         elif output_type == "pil":
             # 8. Post-processing
             image = self.decode_latents(latents)
+            if return_intermediates and pred_x0 is not None:
+                pred_x0_image = self.decode_latents(pred_x0)
             # 10. Convert to PIL
             image = self.numpy_to_pil(image)
+            if pred_x0_image is not None:
+                pred_x0_image = self.numpy_to_pil(pred_x0_image)
         else:
             # 8. Post-processing
             image = self.decode_latents(latents)
+            if return_intermediates and pred_x0 is not None:
+                pred_x0_image = self.decode_latents(pred_x0)
+
+        if return_intermediates:
+            intermediates = {
+                "final_latents": latents.detach().cpu(),
+                "pred_x0_latents": pred_x0.detach().cpu() if pred_x0 is not None else None,
+                "pred_x0_images": pred_x0_image,
+            }
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
+
+        if return_intermediates:
+            return {
+                "images": image,
+                "nsfw_content_detected": has_nsfw_concept,
+                "intermediates": intermediates,
+            }
 
         if not return_dict:
             return (image, has_nsfw_concept)

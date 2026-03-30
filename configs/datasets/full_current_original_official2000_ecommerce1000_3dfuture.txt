@@ -1,0 +1,6 @@
+output_dir = logs/neural_gaffer_training_full_current_original_official2000_ecommerce1000_3dfuture
+train_img_dir = /4T/CXY/Neural_Gaffer/logs/dataset_unions/full_current_original_official2000_ecommerce1000_3dfuture/images
+train_lighting_dir = /4T/CXY/Neural_Gaffer/logs/dataset_unions/full_current_original_official2000_ecommerce1000_3dfuture/lighting
+val_img_dir = /4T/CXY/Neural_Gaffer/validation_data/images/val_rendered_images_resized/validation
+val_lighting_dir = /4T/CXY/Neural_Gaffer/validation_data/lighting/val_preprocessed_environment_resized
+wandb_run_note = full_current_original_official2000_ecommerce1000_3dfuture

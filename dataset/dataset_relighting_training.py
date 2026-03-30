@@ -6,6 +6,7 @@ import torch
 import torchvision
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+from torchvision.transforms import functional as TF
 from PIL import Image
 import numpy as np
 import random
@@ -92,6 +93,10 @@ class NeuralGafferTrainingData(Dataset):
                  dataset_type=None,
                  random_lighting_condition_prob: float = 0.1,
                  foreground_background_threshold: float = 0.98,
+                 random_lighting_condition_prob_state=None,
+                 random_lighting_condition_jitter_prob: float = 0.0,
+                 random_lighting_condition_brightness_jitter: float = 0.0,
+                 random_lighting_condition_gamma_jitter: float = 0.0,
                  ) -> None:
         """
         Neural Gaffer 训练数据集。
@@ -119,6 +124,10 @@ class NeuralGafferTrainingData(Dataset):
         self.dataset_type = dataset_type
         self.random_lighting_condition_prob = float(random_lighting_condition_prob)
         self.foreground_background_threshold = float(foreground_background_threshold)
+        self.random_lighting_condition_prob_state = random_lighting_condition_prob_state
+        self.random_lighting_condition_jitter_prob = float(random_lighting_condition_jitter_prob)
+        self.random_lighting_condition_brightness_jitter = float(random_lighting_condition_brightness_jitter)
+        self.random_lighting_condition_gamma_jitter = float(random_lighting_condition_gamma_jitter)
 
         # if rank == 0:
         # total_objects = len(self.paths)
@@ -165,6 +174,30 @@ class NeuralGafferTrainingData(Dataset):
         else:
             for object_id in os.listdir(self.img_dir):
                 self.paths.append(object_id)
+
+    def _get_current_random_lighting_condition_prob(self) -> float:
+        if self.random_lighting_condition_prob_state is None:
+            return self.random_lighting_condition_prob
+        try:
+            return float(self.random_lighting_condition_prob_state.value)
+        except Exception:
+            return self.random_lighting_condition_prob
+
+    def _apply_random_lighting_condition_jitter(self, image: Image.Image) -> Image.Image:
+        jitter_prob = max(float(self.random_lighting_condition_jitter_prob), 0.0)
+        if jitter_prob <= 0.0 or random.random() >= jitter_prob:
+            return image
+
+        brightness_jitter = max(float(self.random_lighting_condition_brightness_jitter), 0.0)
+        gamma_jitter = max(float(self.random_lighting_condition_gamma_jitter), 0.0)
+        jittered = image
+        if brightness_jitter > 0.0:
+            brightness_factor = random.uniform(max(0.05, 1.0 - brightness_jitter), 1.0 + brightness_jitter)
+            jittered = TF.adjust_brightness(jittered, brightness_factor)
+        if gamma_jitter > 0.0:
+            gamma = random.uniform(max(0.05, 1.0 - gamma_jitter), 1.0 + gamma_jitter)
+            jittered = TF.adjust_gamma(jittered, gamma=gamma, gain=1.0)
+        return jittered
 
 
 
@@ -325,11 +358,12 @@ class NeuralGafferTrainingData(Dataset):
             # 10% chance to make lighting_idx_cond (lighting condition if the input condition image) to be -1
             # lighting_idx_cond = -1 表示条件图使用“随机区域光”版本，
             # 可以增加训练时的光照多样性。
-            if random.random() < self.random_lighting_condition_prob:
+            if random.random() < self._get_current_random_lighting_condition_prob():
                 lighting_idx_cond = -1
 
         if self.dataset_type == 'unseen_object_with_random_area_light_condition':
             lighting_idx_cond = -1
+        is_random_lighting_condition = float(lighting_idx_cond == -1)
             
         object_id = self.paths[index]
         filename = os.path.join(self.img_dir, object_id)
@@ -342,7 +376,10 @@ class NeuralGafferTrainingData(Dataset):
             cond_image_path = os.path.join(filename, 'random_lighting_%03d.png' % (index_cond))
         else:
             cond_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (index_cond, lighting_idx_cond)))[0]
-        cond_im = self.process_im(self.load_im(cond_image_path))                        
+        cond_image = self.load_im(cond_image_path)
+        if not self.validation and lighting_idx_cond == -1:
+            cond_image = self._apply_random_lighting_condition_jitter(cond_image)
+        cond_im = self.process_im(cond_image)
 
         # 2. 读取目标图，也就是模型应该学会生成的 GT。
         target_image_path = glob(os.path.join(filename, '%03d_%03d_*.png' % (index_target, lighting_idx_target)))[0]
@@ -438,6 +475,7 @@ class NeuralGafferTrainingData(Dataset):
         data["envir_map_target_ldr"] = envir_map_target_ldr
         data["envir_map_target_hdr"] = envir_map_target_hdr
         data["foreground_mask_target"] = target_foreground_mask
+        data["is_random_lighting_condition"] = torch.tensor(is_random_lighting_condition, dtype=torch.float32)
         
         if not self.validation:
             data["image_another_target"] = another_target_im

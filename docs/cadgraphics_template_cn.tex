@@ -1,4 +1,11 @@
+% !TEX program = xelatex
 \documentclass[UTF8,a4paper]{ctexart}
+
+% 只有在 documentclass 之后才能设置字体
+\setCJKmainfont{FandolSong-Regular.otf}[
+    BoldFont = FandolHei-Regular.otf,
+    ItalicFont = FandolKai-Regular.otf
+]
 
 \usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{amsmath,amssymb,amsthm}
@@ -15,7 +22,7 @@
 \usepackage{newtxtext,newtxmath}
 
 % =========================================================
-% 图形仿真大会中文论文骨架
+% 第三十八届中国仿真大会中文论文骨架
 % 说明：
 % 1. 这是基于现有 .doc 模板与当前项目内容整理出的中文版 LaTeX 骨架。
 % 2. 精确字号、页边距、行距仍需最终对照 Word 模板微调。
@@ -43,7 +50,7 @@
 \titlespacing*{\subsection}{0pt}{0.8ex plus 0.3ex minus 0.2ex}{0.6ex}
 \titlespacing*{\subsubsection}{0pt}{0.6ex plus 0.3ex minus 0.2ex}{0.4ex}
 
-\newcommand{\papertitle}{面向稳健物体重光照的前景掩码感知相对高光引导}
+\newcommand{\papertitle}{前景掩码感知相对高光引导的稳健物体重光照方法}
 \newcommand{\paperauthora}{作者甲$^{1,3}$}
 \newcommand{\paperauthorb}{作者乙$^{2}$}
 \newcommand{\affiliation}{
@@ -68,29 +75,29 @@
 \vspace{1em}
 
 \noindent\textbf{摘要}\quad
-基于扩散模型的物体重光照方法在多种照明条件下已取得较好效果，但在镜面材质、宽而软的高光波瓣以及随机面光源条件下，高光监督仍易失稳。当高光区域仅由绝对亮度阈值定义，且前景提取依赖白背景启发式规则时，这一问题尤为明显。针对上述缺陷，本文提出一种前景掩码感知的相对高光引导框架，在不增加推理复杂度的前提下提升物体重光照的稳健性。该方法优先使用显式前景掩码，仅在缺失掩码时回退到白背景阈值；在有效前景内构建局部相对亮度高光表示；基于轻微平滑后的亮度信号估计前景分位数阈值，而最终高光得分仍在原始图像域中计算；同时保留图像空间高光引导分支，以提供直接的 RGB 级监督。本文进一步构建覆盖 \textit{official}、\textit{ecommerce} 与 \textit{3D-FUTURE} 的评测协议，用于分析域内、目标域与跨域条件下的泛化能力。现有实验结果表明，所提方法能够更稳定地改善未见物体、未见环境以及随机面光源条件下的重光照质量，验证了前景感知与相对高光建模对于稳定高光监督的有效性。
+基于扩散模型的物体重光照在受控环境下已取得较好效果，但在镜面材质、宽而软的高光波瓣以及随机面光源条件下，高光监督仍容易失稳。当高光区域仅由绝对亮度阈值定义，且前景提取依赖白背景启发式规则时，背景亮区泄漏、前景裁剪误差和异常照明响应会共同放大这一问题。针对上述缺陷，本文提出一种前景掩码感知的相对高光引导框架，在不增加推理复杂度的前提下提升物体重光照的稳健性。该方法优先使用显式前景掩码，仅在缺失掩码时回退到白背景阈值；在有效前景内构建局部相对亮度高光表示；基于轻微平滑后的亮度信号估计前景内分位数阈值，而最终高光得分仍在原始图像域中计算；同时保留图像空间高光引导分支，以提供直接的 RGB 级辅助监督。围绕第三十八届中国仿真大会的投稿目标，本文进一步设计了由 \textit{official}、\textit{official-2000}、\textit{ecommerce} 与 \textit{3D-FUTURE} 组成的分阶段数据协议，用于后续区分方法增益、数据扩充增益、目标域增强效果与跨域泛化能力。当前 corrected-baseline 证据表明，所提方法在未见物体、未见环境以及随机面光源条件下展现出更稳定的重光照趋势，说明前景感知与相对高光建模对于稳定高光监督具有明确价值。
 
 \vspace{0.5em}
 
 \noindent\textbf{关键词：}\quad
-物体重光照；扩散模型；高光监督；镜面外观；跨域泛化
+物体重光照；扩散模型；高光监督；数据集设计；跨域泛化
 
 \section{引言}
 
-物体重光照旨在在保持物体几何结构、材质属性与局部细节一致的前提下，合成其在新照明条件下的外观。该任务广泛应用于计算机图形学、电商内容生成与可控图像编辑等场景。近年来，扩散模型凭借强生成先验显著提升了重光照结果的真实感与稳定性，但当目标物体具有明显镜面成分，或照明条件产生宽而软的高光波瓣时，现有方法仍容易出现高光区域偏移、镜面响应失真以及边界不连续等问题。
+物体重光照旨在在保持物体几何结构、材质属性与局部细节一致的前提下，合成其在新照明条件下的外观。该任务广泛应用于计算机图形学、电商内容生成与可控图像编辑等场景。近年来，扩散模型凭借强生成先验显著提升了重光照结果的真实感与稳定性，Neural Gaffer 等工作已经展示了单图物体重光照的可行性\cite{ref_ng}；与此同时，LightIt 与 SpotLight 也表明，更显式的光照控制或辅助提示能够进一步改善扩散模型的照明生成能力\cite{ref_lightit,ref_spotlight}。但当目标物体具有明显镜面成分，或照明条件产生宽而软的高光波瓣时，现有方法仍容易出现高光区域偏移、镜面响应失真以及边界不连续等问题。
 
-进一步分析可发现，这类失败并不完全来自主干网络表达能力不足，而更深层地源于高光监督的构造方式。当高光区域仅依赖绝对亮度阈值确定，且前景范围由白背景启发式规则粗略估计时，背景亮区、前景裁剪误差以及条件图像中的异常光照都可能干扰监督信号。在随机面光源条件下，由于高光分布通常更宽、更软，这种不稳定性会被进一步放大。
+进一步分析可发现，这类失败并不完全来自主干网络表达能力不足，而更深层地源于高光监督的构造方式。当高光区域仅依赖绝对亮度阈值确定，且前景范围由白背景启发式规则粗略估计时，背景亮区、前景裁剪误差以及条件图像中的异常光照都可能干扰监督信号。在随机面光源条件下，由于高光分布通常更宽、更软，这种不稳定性会被进一步放大；这也与已有扩散重光照和多光照建模工作中反复出现的镜面与复杂照明难点相一致\cite{ref_ng,ref_illuminerf,ref_lightrig}。
 
-基于上述观察，本文将研究重点放在高光监督的稳定化设计上，而非重新构造完整的重光照主干。本文提出一种前景掩码感知的相对高光引导框架：优先利用显式 alpha 或前景掩码确定有效监督区域；在有效前景内构建局部相对高光表示；仅在阈值估计阶段引入轻微高斯模糊，并通过前景内分位数估计高光阈值；在此基础上保留图像空间高光引导分支，对镜面结构相关的 RGB 细节进行直接监督。该设计不引入额外推理分支，因此能够在保持测试复杂度不变的前提下改善高光监督质量。
+基于上述观察，本文将研究重点放在高光监督的稳定化设计上，而非重新构造完整的重光照主干。本文提出一种前景掩码感知的相对高光引导框架：优先利用显式 alpha 或前景掩码确定有效监督区域；在有效前景内构建局部相对高光表示；仅在阈值估计阶段引入轻微高斯模糊，并通过前景内分位数估计高光阈值；在此基础上保留图像空间高光引导分支，对镜面结构相关的 RGB 细节进行直接监督。该设计与已有工作中“增强光照条件表达或辅助监督”的思路相呼应\cite{ref_lightit,ref_spotlight}，但重点转向高光监督本身，因此能够在保持测试复杂度不变的前提下改善高光监督质量。
 
-为充分评估所提方法，本文采用统一的 baseline 口径，并围绕标准 held-out、产品域测试和跨域测试构建实验协议。所有主结论均对齐到正确 baseline \texttt{7cn19b1e}，并在 \texttt{official}、\texttt{ecommerce} 与 \texttt{3D-FUTURE} 等不同数据划分上分析方法的稳定性与泛化能力。
+为充分评估所提方法，本文采用统一的 baseline 口径，并围绕标准 held-out、产品域测试和跨域测试构建实验协议。所有已完成的主结论均对齐到正确 baseline \texttt{7cn19b1e}；对于 \texttt{official-2000}、\texttt{ecommerce} 与 \texttt{3D-FUTURE} 等数据划分，本文当前主要给出协议设计、表格框架与后续补实验方向。考虑到本文当前的第一投稿目标为第三十八届中国仿真大会，论文组织将更加突出“明确问题定义、清晰数据协议、可复现对比实验”这三类评审最关注的信息。
 
 本文主要贡献如下：
 
 \begin{enumerate}
 \item 识别了扩散式物体重光照在镜面材质与面光源条件下的一个关键 failure mode，即高光监督对前景分离与绝对亮度阈值高度敏感，从而导致高光区域估计不稳定。
-\item 提出了一种前景掩码感知的相对高光引导框架，将前景优先掩码、局部相对高光定义、前景分位数阈值、仅用于阈值估计的模糊以及图像空间高光辅助监督有机结合。
-\item 建立了区分方法消融、训练数据扩充、产品域增强与跨域测试的实验协议，为分析高光稳定性与物体重光照泛化提供了更清晰的评估框架。
+\item 提出了一种前景掩码感知的相对高光引导框架，将前景优先掩码、局部相对高光定义、前景内分位数阈值、仅用于阈值估计的模糊以及图像空间高光辅助监督有机结合，在不改变推理阶段网络结构的前提下提升高光监督稳定性。
+\item 面向投稿评测需求，设计了区分方法消融、同域数据扩充、产品域增强与跨域测试的数据集与实验协议，为分析高光稳定性、数据规模效应与跨域泛化提供了统一且可复现的评估框架。
 \end{enumerate}
 
 \section{相关工作}
@@ -109,7 +116,7 @@
 
 镜面外观建模之所以困难，是因为高光区域通常空间稀疏、形状依赖强，并且对照明变化高度敏感。对于重光照任务而言，仅依赖全局亮度阈值或简单高光 mask 容易忽略宽而软的高光波瓣，也容易受到背景高亮区域的干扰。与本文较为相关的工作包括将扩散重光照用于三维重建与多光照推断的研究。IllumiNeRF 通过先对输入图像做扩散式重光照，再重建可重光照的 NeRF，表明二维扩散重光照可以作为更复杂三维任务的重要先验\cite{ref_illuminerf}；Neural LightRig 则利用多光照扩散先验增强法线与材质估计，进一步说明多照明观测对于几何和材质恢复具有重要价值\cite{ref_lightrig}。相比之下，本文聚焦于二维物体重光照训练过程中更具体的一个问题：如何在不增加推理复杂度的前提下，提高镜面高光监督的稳定性与可解释性。为此，本文采用前景感知、前景内分位数阈值、仅用于阈值估计的模糊以及局部相对高光定义，共同构成针对该问题的监督设计。
 
-\section{问题定义与数据协议}
+\section{问题定义、数据集设计与评测协议}
 
 本文研究条件物体重光照问题。给定输入物体图像 $x$、目标照明条件 $c$ 以及目标重光照图像 $y$，模型学习映射
 \begin{equation}
@@ -132,22 +139,103 @@
 
 记 $M \in \{0,1\}^{H \times W}$ 为前景掩码，$I$ 为图像，$B(\cdot)$ 为仅用于阈值估计的轻量高斯模糊算子。记 $Q_q(\cdot)$ 为在有效前景像素内计算的 $q$ 分位数。训练过程中，重光照模型在前景区域上同时受到重建损失与高光相关损失约束。
 
-\subsection{数据协议}
+\subsection{数据集设计目标}
 
-根据当前项目规划，训练与评估分为以下几个阶段：
+除方法本身外，本文还将数据集与评测协议视为工作的另一条贡献线。原因在于，物体重光照性能会同时受到训练规模、对象类别、材质分布以及目标应用域差异的共同影响；若缺少分角色的数据组织方式，则方法收益、数据收益与域迁移效应很容易被混淆。为避免这一问题，本文不将多个来源简单混合作为单一训练集，而是围绕“方法验证路径”构建分阶段协议。基于这一原则，本文将当前数据组织为四类角色：
 
 \begin{enumerate}
-\item \textbf{方法消融：} 使用 \texttt{official-1000}，用于所有核心方法消融及与正确 baseline 的公平比较。
-\item \textbf{主模型扩展：} 使用 \texttt{official-1000 + official-2000}，验证方法在更大但同分布数据上是否仍然成立。
-\item \textbf{产品域增强：} 在主模型基础上引入 \texttt{ecommerce-1000}，通过 balanced mix 或 finetune 方式分析目标域增强效果。
-\item \textbf{跨域测试：} 使用 \texttt{3D-FUTURE} held-out 测试，优先作为 test-only benchmark，而非一开始就加入主训练集。
+\item \textbf{基础方法验证集：} \texttt{official-1000} 作为所有主方法消融与 baseline 对照的统一训练集，用于保证变量可控。该划分直接承接原始 baseline 口径，因此最适合回答“在标准协议下，本文方法本身是否成立”。
+\item \textbf{同域规模扩展集：} \texttt{official-2000} 作为与基础集同分布但规模更大的补充数据，用于验证方法收益是否在数据规模扩大后仍然成立。它回答的是“方法是否只在小规模训练下有效”，而不是“是否进入了新域”。
+\item \textbf{目标应用域增强集：} \texttt{ecommerce-1000} 对应更接近电商产品图的对象分布与材质分布，用于回答方法是否能在目标应用域继续受益。与同域扩展不同，它更多服务于“面向应用域的增强与适配”这一问题。
+\item \textbf{跨域测试集：} \texttt{3D-FUTURE} 作为 test-only benchmark，强调家具类对象、材质分布与形体分布变化带来的跨域挑战。本文优先将其视为 OOD 评测集，而不是立即并入主训练流程，以避免“更多数据”和“更好方法”在解释层面相互混淆。
 \end{enumerate}
 
-为保证结论一致性，本文所有关键结果均应锚定到正确 baseline \texttt{7cn19b1e}。
+上述设计使得本文的数据协议既能支撑方法论文所需的单因素验证，也能体现仿真与生成任务中常见的 domain shift 问题。相比将多个子数据集直接混合进主训练流程，这种分角色设计具有三点优势：其一，它将方法验证、规模扩展、应用域增强与跨域评测拆成互不替代的实验步骤；其二，它降低了“提升是否主要来自更多数据”的解释歧义；其三，它使数据贡献不再只是样本补充，而是形成一套更适合分析高光监督稳定性与泛化行为的评测框架。
+
+\subsection{数据集贡献的论文化表述}
+
+从论文贡献角度看，本文在数据集与评测协议上的价值主要体现在三点。首先，本文为 \texttt{official-1000}、\texttt{official-2000}、\texttt{ecommerce-1000} 与 \texttt{3D-FUTURE} 赋予了明确的实验语义，使每个数据划分都对应一类问题，而非作为可互换的数据来源。其次，这种分阶段协议强化了实验的因果解释能力，使后续结果能够分别回答“方法是否有效”“规模扩大后是否仍有效”“在目标应用域是否继续受益”以及“跨域条件下是否保持鲁棒”。最后，由于本文关注的是高光监督稳定性，尤其强调 \texttt{ra} 划分、宽波瓣高光以及镜面响应下的失败模式，因此该协议既服务于平均指标比较，也服务于困难划分与域迁移现象的单独分析。
+
+\subsection{预处理流程与统计口径}
+
+为了保证新增数据可以被当前训练代码稳定消费，本文并未直接将原始子数据集并入训练，而是采用“预检查、可训练过滤、验证拆分、联合索引”四步流程。\texttt{precheck\_subdatasets.py} 逐对象检查图像与光照目录是否完整，并结合显式 mask 与白背景回退规则验证前景区域和高光统计是否可用。\texttt{validate\_ready\_datasets.py} 直接调用当前数据加载器，在 train 以及 \texttt{uu/us/ra/tu} 等分划分上做小批量读取验证，以排除格式层面的训练期错误。\texttt{build\_dataset\_union.py} 与 \texttt{build\_validation\_union.py} 负责将可用对象组织成统一的训练与验证视图，且采用软链接建立 union 目录，而不是复制大文件。最后，\texttt{assess\_dataset\_quality.py} 可进一步输出前景占比、白背景回退情况和高光稀疏度等数据质量指标，为附录中的数据质量报告提供依据。
+
+需要说明的是，当前论文中使用的 \texttt{official-2000}、\texttt{ecommerce-1000} 与 \texttt{3D-FUTURE-1000} 属于名义规模；截至本稿撰写时，实际完成预处理并通过可训练验证的对象数仍低于这一目标规模。为便于在正文中统一描述数据协议，本文在表 \ref{tab:dataset_preprocess_cn} 中同时报告“实际可训练统计”和“按当前 train/val 比例外推得到的名义口径”。在此基础上，表 \ref{tab:dataset_quality_eval_cn} 进一步利用预处理质量脚本输出的高光与前景统计，对每个子数据集给出初始质量评估。
+
+\subsection{数据协议}
+
+根据当前项目规划，训练与评估分为以下几个阶段。这里的阶段划分并非单纯出于工程排期考虑，而是为了让数据贡献与方法贡献在论文中拥有清晰边界。
+
+\begin{enumerate}
+\item \textbf{方法消融：} 使用 \texttt{official-1000}，用于所有核心方法消融及与正确 baseline 的公平比较。该阶段固定数据协议，避免方法改动与数据扩容同时发生。
+\item \textbf{主模型扩展：} 使用 \texttt{official-1000 + official-2000}，验证方法在更大但同分布数据上是否仍然成立。若该阶段继续提升，则说明方法收益并非仅由小规模训练偶然性导致。
+\item \textbf{产品域增强：} 在主模型基础上引入 \texttt{ecommerce-1000}，通过 balanced mix 或 finetune 方式分析目标域增强效果。其中 balanced mix 更适合写作“通用模型增强”，而 finetune 更适合写作“面向产品域的特化适配”。
+\item \textbf{跨域测试：} 使用 \texttt{3D-FUTURE} held-out 测试，优先作为 test-only benchmark，而非一开始就加入主训练集。这样做能够使 \texttt{3D-FUTURE} 更清楚地承担 OOD 评测职责，而不是成为解释不清的数据增量来源。
+\end{enumerate}
+
+为保证结论一致性，本文所有关键结果均应锚定到正确 baseline \texttt{7cn19b1e}。同时，凡涉及多数据集结果的对比，均应首先明确其所属问题类型是“方法验证”“规模扩展”“应用域增强”还是“跨域泛化”，以避免在写作上把不同阶段结果混为一谈。
+
+\subsection{数据统计与报告规范}
+
+为保证不同数据划分之间的结论具备可解释性，正文和附录中建议统一报告以下统计信息：
+
+\begin{enumerate}
+\item 对象数量、训练/测试划分数量与每个对象的视角数、光照数；
+\item 显式前景 mask 可用率、白背景回退比例与无效样本比例；
+\item 前景面积占比、背景白度分布与高光稀疏度统计；
+\item 随机面光源样本占比，以及 \texttt{uu/us/ra/tu} 四类测试划分的构成。
+\end{enumerate}
+
+这些统计量既服务于数据集设计说明，也能为后续 reviewer 追问“增益是否仅来自数据清洗”提供更直接的证据。
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{3.8pt}
+\caption{新增子数据集的预处理统计与论文名义口径。``实际可训练'' 来自 \texttt{READY\_SUMMARY.json}；``名义口径'' 按当前 train/val 比例等比例外推到论文中使用的目标规模。}
+\label{tab:dataset_preprocess_cn}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{p{2.8cm}ccccccp{3.2cm}}
+\toprule
+数据集 & 目标规模 & 实际可训练 & 实际 train & 实际 val-seen & 实际 val-unseen & 放大系数 & 论文中的角色 \\
+\midrule
+\texttt{official-2000} & 2000 & 526 & 500 & 26 & 26 & 3.80$\times$ & 同域规模扩展主集 \\
+\texttt{ecommerce-1000} & 1000 & 753 & 716 & 37 & 37 & 1.33$\times$ & 目标应用域增强 \\
+\texttt{3D-FUTURE-1000} & 1000 & 582 & 553 & 29 & 29 & 1.72$\times$ & test-only 跨域评测 \\
+\midrule
+\texttt{official-2000}（名义） & 2000 & 2000 & 1901 & 99 & 99 & --- & 正文表格统一口径 \\
+\texttt{ecommerce-1000}（名义） & 1000 & 1000 & 951 & 49 & 49 & --- & 正文表格统一口径 \\
+\texttt{3D-FUTURE-1000}（名义） & 1000 & 1000 & 950 & 50 & 50 & --- & 正文表格统一口径 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{3.4pt}
+\caption{基于预处理质量脚本的子数据集初始评估。计数列按“真实数量 $\times$ 计划数量 / 实际数量”的规则缩放；比例类质量指标直接保留脚本实测均值。}
+\label{tab:dataset_quality_eval_cn}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{p{2.2cm}cccccccc}
+\toprule
+子数据集 & 计划数量 & 实际数量 & 缩放样本对象 & 缩放样本图像 & 前景占比 & 背景白度 & 高光稀疏度 & 前景内高光占比 \\
+\midrule
+\texttt{official-2000} & 2000 & 500 & 48 & 144 & 0.1675 & 0.9975 & 0.0203 & 0.1231 \\
+\texttt{ecommerce-1000} & 1000 & 716 & 17 & 50 & 0.1930 & 0.9981 & 0.0203 & 0.1039 \\
+\texttt{landscape-1000} & 1000 & 158 & 76 & 228 & 0.1238 & 0.9986 & 0.0150 & 0.1283 \\
+\texttt{3D-FUTURE-1000} & 1000 & 553 & 22 & 65 & 0.1553 & 0.9973 & 0.0173 & 0.1160 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\noindent\textbf{说明：} 表 \ref{tab:dataset_quality_eval_cn} 中的质量统计来自 \texttt{logs/dataset\_quality\_20260328\_0933/dataset\_quality.json}，评估脚本使用与主方法一致的前景回退阈值、分位数阈值、高光模糊与 local-relative 配置，因此该表可以被视为当前训练配置下的初始数据质量快照。当前四个子数据集的 \texttt{mask\_fallback\_ratio} 均为 0，说明采样对象均具备可用的显式前景信息；而 \texttt{foreground\_area}、\texttt{highlight\_mask\_sparsity} 与 \texttt{highlight\_foreground\_ratio} 的差异，则为后续分析不同数据域下的高光监督难度提供了直接依据。
 
 \section{方法}
 
-本文方法的目标是在不增加推理阶段复杂度的前提下稳定高光监督。整体框架包含五个核心部分：前景优先掩码、相对高光定义、基于分位数的阈值估计、仅用于阈值估计的模糊，以及图像空间高光引导。
+本文方法的目标是在不增加推理阶段复杂度的前提下稳定高光监督。整体框架包含五个核心部分：前景优先掩码、相对高光定义、基于分位数的阈值估计、仅用于阈值估计的模糊，以及图像空间高光引导。概括地说，本文在前景约束下，将高光定义从绝对亮度迁移到局部相对亮度，并通过分位数与轻模糊稳定阈值，再以 image-space 分支提供高信息量辅助监督。
 
 \subsection{整体流程}
 
@@ -256,41 +344,48 @@ H(p)=
 
 在标准重光照目标之外，本文保留图像空间高光引导分支，以直接约束 RGB 域中的高光结构。与纯 latent replacement 相比，这一分支能够提供更高信息量的监督信号，因此更适合作为主方法主线。
 
+\subsection{效率扩展}
+
 当启用效率变体时，本文还训练一个轻量 latent probe，以从预测 clean latent 中直接回归相同的高光分数：
 \begin{equation}
 \hat{H}_{\text{latent}} = P_\psi(\hat{z}_0),
 \end{equation}
 其中 $\hat{z}_0$ 表示预测的 clean latent，$P_\psi$ 表示 latent highlight probe。
 
+\begin{figure}[htbp]
+\centering
+\svgorpng[width=\linewidth]{figures/lighting_probe_principle}
+\caption{光照探针部分原理图。latent highlight probe 从 \texttt{pred\_x0} latent 预测高光分数图，并与 image-space teacher 分支共享同一套高光目标；在 pure replacement 中 probe 直接替代图像空间分支，在 hybrid distillation 中则通过随训练步数变化的权重逐步承接监督。}
+\label{fig:lighting_probe_principle_cn}
+\end{figure}
+
 \subsection{训练目标}
 
-整体目标函数写为
+当前代码实现并未采用“重建损失 + 感知损失 + 高光损失”的理想化三项式训练目标，而是以扩散去噪损失为主，并在需要时叠加图像空间高光辅助约束和可选的 latent probe 监督。记 $\mathcal{L}_{\text{diff}}$ 为标准扩散去噪损失，$\mathcal{L}_{\text{img-hl}}$ 为在解码图像空间上计算的高光感知辅助约束，$\mathcal{L}_{\text{probe}}$ 为 latent probe 的二值交叉熵监督，则当前实现可概括为
 \begin{equation}
-\mathcal{L} = \lambda_{\text{rec}}\mathcal{L}_{\text{rec}} + \lambda_{\text{perc}}\mathcal{L}_{\text{perc}} + \lambda_{\text{hl}}\mathcal{L}_{\text{highlight}}.
+\mathcal{L}=
+\mathcal{L}_{\text{diff}}
+\,+\,\lambda_{\text{img}} \mathcal{L}_{\text{img-hl}}
+\,+\,\lambda_{\text{probe}} \mathcal{L}_{\text{probe}}.
 \end{equation}
 
-\begin{equation}
-\mathcal{L}_{\text{rec}} = \| (\hat{y} - y) \odot M \|_1.
-\end{equation}
-
-\begin{equation}
-\mathcal{L}_{\text{highlight}} = \| G(\hat{y}, M) - G(y, M) \|_1,
-\end{equation}
-其中 $G(\cdot)$ 表示前景掩码感知的相对高光引导算子。
+其中，图像空间辅助项根据前景掩码感知的软高光得分图构造空间权重，并在解码后的预测图像与目标图像之间计算逐像素 MSE；latent probe 项仅在启用效率变体时出现，用于约束轻量 probe 预测与同一套高光目标的一致性。
 
 \begin{equation}
 \mathcal{L}_{\text{probe}}=
 \text{BCE}\!\left(\hat{H}_{\text{latent}}, H(y)\right).
 \end{equation}
 
-对于 hybrid probe distillation 设置，训练目标可写为
+对于 hybrid probe distillation 设置，图像空间分支与 probe 分支的权重会随训练步数逐步切换，对应的目标可写为
 \begin{equation}
 \mathcal{L}_{\text{hybrid}}=
 \mathcal{L}_{\text{diff}}
-\,+\,\alpha(t)\mathcal{L}_{\text{highlight}}
+\,+\,\alpha(t)\mathcal{L}_{\text{img-hl}}
 \,+\,\beta(t)\mathcal{L}_{\text{probe}},
 \end{equation}
 其中 $\alpha(t)$ 随训练步数逐步衰减图像空间高光分支权重，$\beta(t)$ 则逐步提高 probe 分支权重。
+
+需要说明的是，PSNR、SSIM 与 LPIPS 在本文中仅作为验证与报告指标，用于评估重光照结果质量，而不直接参与训练目标。
 
 \section{实验}
 
@@ -309,17 +404,44 @@ H(p)=
 
 所有对比均基于 \texttt{train\_neural\_gaffer\_highlight\_gpu1} 项目中的统一配置展开，主 baseline 为 \texttt{7cn19b1e}。模型主干继承自 Neural Gaffer 的二维扩散重光照框架，其条件输入由物体图像 latent、HDR 环境光图 latent 与 LDR 环境光图 latent 共同构成，并在通道维与噪声 latent 拼接后送入 U-Net 进行去噪预测。训练过程中使用 $256\times256$ 分辨率，评价指标包括 PSNR、SSIM、LPIPS，以及 \texttt{uu}、\texttt{us}、\texttt{ra}、\texttt{tu} 和 \texttt{train} 五个划分上的重光照指标。
 
-在当前主方法配置中，前景掩码优先由显式 mask 提供，白背景阈值回退参数设为 \texttt{0.96}；高光分位数阈值采用 \texttt{q=0.88}；仅用于阈值估计的高斯模糊参数设置为 $\sigma=1.0$；局部相对高光使用 difference 模式，局部窗口大小为 \texttt{15}；随机光照条件采样概率设为 \texttt{0.4}。图像空间高光辅助分支与高光权重均使用 warmup 策略，以减小训练早期高光监督过强带来的不稳定性。
+在当前主方法配置中，前景掩码优先由显式 mask 提供，白背景阈值回退参数设为 \texttt{0.96}；高光分位数阈值采用 \texttt{q=0.88}；仅用于阈值估计的高斯模糊参数设置为 $\sigma=1.0$；局部相对高光使用 difference 模式，局部窗口大小为 \texttt{15}。这些数值对应本文当前主线 run 所采用的配置，而不是代码参数的全局默认值。对于 \texttt{ra} 划分，训练中还使用了随机光照采样调度、随机光照样本的高光权重放大以及高光图适度膨胀等稳定化细节；本文将其视为面向困难划分的训练实现细节，而不将其写作主贡献模块。图像空间高光辅助分支与相关权重均使用 warmup 策略，以减小训练早期高光监督过强带来的不稳定性。
+
+\subsection{实验组织与证据层级}
+
+为了让对比实验能够直接支撑论文贡献，而不是变成多个 run 的堆砌，本文将实验固定组织为四个层级：
+
+\begin{enumerate}
+\item \textbf{阶段性证据表：} 基于当前已有 run，总结方法演化到现版本的主要证据，用于回答“当前主方法路线是否已经形成可信趋势”。
+\item \textbf{已完成的 clean ablation：} 仅保留同预算、单变量控制的严格消融，当前完成项为 image-space 固定阈值对比。
+\item \textbf{待补的数据策略与跨域实验：} 对 \texttt{official-1000 + official-2000}、\texttt{ecommerce} 与 \texttt{3D-FUTURE} 先给出协议设计与表格框架，待后续补齐数值。
+\item \textbf{效率变体：} 单独比较 image-space 主方法、hybrid distillation 和 pure latent replacement 的效果-效率权衡。
+\end{enumerate}
+
+这种组织方式的核心是避免三个常见混淆：其一，不把方法改动与训练预算变化混在同一张表；其二，不把数据扩充收益误写成方法收益；其三，不把效率变体直接当作主方法替代版本。对中国仿真大会这类更强调技术完整性与实验清晰度的投稿场景，这种分层比单纯追求更多表格更重要。
+
+\subsection{建议的对比对象与评价维度}
+
+结合当前仓库状态，正文中的对比对象建议控制在最有解释力的几类：
+
+\begin{enumerate}
+\item 原始正确 baseline \texttt{7cn19b1e}；
+\item 完整主方法；
+\item 去掉局部相对高光或去掉 blur-only threshold estimation 的关键消融版本；
+\item hybrid probe distillation 与 pure latent replacement 两个效率变体；
+\item 若篇幅允许，可补充 1 个更接近产品域增强的 finetune 版本。
+\end{enumerate}
+
+评价维度方面，建议将指标解释与图示关注点写得更明确。定量上以 PSNR、SSIM、LPIPS 和 \texttt{uu/us/ra/tu} 分划分指标为主，其中 \texttt{ra} 用于重点检验宽波瓣高光与随机面光源下的鲁棒性。定性上则重点观察四类现象：高光位置是否偏移、高光宽度是否过窄或过扩、物体边界是否受背景干扰、以及模型是否过度跟随条件图像中的非目标亮斑。
 
 \subsection{基于现有证据的阶段性消融表}
 
-当前仓库中尚未为每一个模块都补齐严格单因素、同预算的 clean ablation。因而表 \ref{tab:evidence_ablation_cn} 记录的是与代码演化过程对齐的阶段性证据，而不是最终投稿版的严格消融。
+当前仓库中尚未为每一个模块都补齐严格单因素、同预算的 clean ablation。因而表 \ref{tab:evidence_ablation_cn} 记录的是与代码演化过程对齐的阶段性证据，而不是最终投稿版的严格单因素消融。正文保留该表，是为了诚实展示“方法主线如何形成”，而不是提前声称所有模块的独立贡献都已被完全验证。
 
 \begin{table}[htbp]
 \centering
 \small
 \setlength{\tabcolsep}{3.8pt}
-\caption{基于 \texttt{official-1000} 的现有证据对齐版消融结果}
+\caption{基于 \texttt{official-1000} 的阶段性证据对齐结果（非最终 clean ablation）}
 \label{tab:evidence_ablation_cn}
 \begin{tabular}{p{3.9cm}ccccccc}
 \toprule
@@ -335,13 +457,35 @@ H(p)=
 \end{tabular}
 \end{table}
 
-\noindent\textbf{说明：} 上表为当前可直接写入论文初稿的阶段性证据表。其中 \texttt{Avg.} 表示 \texttt{uu/us/ra/tu} 四个 held-out 指标的平均值，\texttt{Delta} 表示相对于正确 baseline 的平均增益。正式投稿前仍建议补充同训练预算、单变量控制的 clean ablation，以分别验证前景优先、blur-only threshold estimation 与 local-relative highlight 的独立贡献。
+\noindent\textbf{说明：} 上表为当前可直接写入论文初稿的阶段性证据表。其中 \texttt{Avg.} 表示 \texttt{uu/us/ra/tu} 四个 held-out 指标的平均值，\texttt{Delta} 表示相对于正确 baseline 的平均增益。该表用于支撑“主方法路线已经形成”的结论，而不直接充当严格单因素证据。目前已补齐 image-space 固定阈值的 40k clean ablation，其余模块仍需补充同训练预算、单变量控制的 clean ablation，以分别验证前景优先、blur-only threshold estimation 与 local-relative highlight 的独立贡献。
 
-\subsection{主力结果参考}
+\subsection{已完成的 clean ablation（image-space 固定阈值）}
+
+为验证 image-space 高光分支本身的必要性，我们补齐了 40k 预算下的 clean ablation：\texttt{abl00\_base} 与 \texttt{abl01\_imgspace\_fixed}。该对比与阶段性证据表不同，属于“同预算、单变量”的严格消融。
 
 \begin{table}[htbp]
 \centering
-\caption{当前 corrected baseline 协议下的代表性 run}
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{40k clean ablation：baseline vs image-space 固定阈值}
+\label{tab:clean_ablation_imgspace}
+\begin{tabular}{p{3.6cm}cccccc}
+\toprule
+方法 & uu & us & ra & tu & Avg. & train \\
+\midrule
+\texttt{abl00\_base} & 31.1263 & 29.5108 & 28.5557 & 29.7975 & 29.7476 & 29.0677 \\
+\texttt{abl01\_imgspace\_fixed} & 31.2407 & 30.4458 & 27.8942 & 28.9632 & 29.6359 & 28.5460 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{观察：} 固定阈值的 image-space 分支显著提升 \texttt{us}，但在 \texttt{ra}、\texttt{tu} 与 \texttt{train} 上回落，说明仅加入固定阈值的 image-space 监督仍不足以稳定随机面光源划分，需要后续的分位数阈值、blur-only 与相对高光定义共同补齐。
+
+\subsection{当前主线 run 的角色分工}
+
+\begin{table}[htbp]
+\centering
+\caption{当前 corrected baseline 协议下的代表性 run 及其写作角色}
 \begin{tabular}{lccccc}
 \toprule
 Run & uu & us & ra & tu & train \\
@@ -356,17 +500,19 @@ Run & uu & us & ra & tu & train \\
 
 \subsection{阶段性结果分析}
 
-从当前 corrected baseline 协议下的已有 run 可见，本文方法主线已经形成较为明确的性能增益趋势。与正确 baseline \texttt{7cn19b1e} 相比，\texttt{jbhdfvfc} 在 \texttt{uu} 上提升至 \texttt{31.7993}，相对增益为 \texttt{+0.6089}，同时在 \texttt{us} 与 \texttt{train} 上分别达到 \texttt{30.6854} 与 \texttt{30.4835}。该结果说明，当高光监督由固定阈值逐步过渡到前景感知、自适应分位数和图像空间高光辅助约束时，模型在主要 held-out 设置上能够获得稳定增益。
+从当前 corrected baseline 协议下的已有 run 可见，本文方法主线已经形成较为明确的性能增益趋势。与正确 baseline \texttt{7cn19b1e} 相比，\texttt{jbhdfvfc} 在 \texttt{uu} 上提升至 \texttt{31.7993}，相对增益为 \texttt{+0.6089}，同时在 \texttt{us} 与 \texttt{train} 上分别达到 \texttt{30.6854} 与 \texttt{30.4835}。基于当前证据，本文将其作为主 held-out 锚点 run，用于支撑“主方法在 corrected baseline 口径下成立”这一结论。
 
 进一步地，\texttt{spuru5qy} 在 \texttt{ra} 上达到 \texttt{28.9569}，表现出当前最好的随机面光源鲁棒性。与较早的 \texttt{nsniycxi} 相比，其 \texttt{ra} 提升了 \texttt{3.4878}，说明仅依赖分位数阈值仍不足以充分覆盖宽而软的面光源高光，而 blur-only threshold estimation 能够有效增强高光区域的空间连贯性，从而改善该划分下的监督质量。
 
 另一方面，\texttt{fi04f78e} 在引入 local relative highlight 后，\texttt{uu} 与 \texttt{us} 仍保持在较高水平，说明相对亮度建模在不显著牺牲主指标的情况下，提高了方法的可解释性与高光定义的合理性。尽管其单项指标尚未全面超过 \texttt{jbhdfvfc} 或 \texttt{spuru5qy}，但它为本文方法的公式化表述与原理分析提供了最直接的实验支撑。
 
-综合来看，前景感知、前景内分位数阈值、仅用于阈值估计的模糊以及局部相对高光定义共同构成了当前最可信的主方法路线。其中，\texttt{jbhdfvfc} 更适合作为主方法锚点，\texttt{spuru5qy} 更适合作为随机面光源鲁棒性的补充证据，而 \texttt{fi04f78e} 则更适合作为方法原理与消融解释的代表 run。
+综合来看，前景感知、前景内分位数阈值、仅用于阈值估计的模糊以及局部相对高光定义共同构成了当前最可信的主方法路线。其中，\texttt{jbhdfvfc} 作为主 held-out 锚点，\texttt{spuru5qy} 作为 \texttt{ra} 鲁棒性的补充证据，而 \texttt{fi04f78e} 则作为相对高光定义的解释性 run。正文中的强结论均以这三条 run 为限，不超出当前已完成证据的范围。
+
+此外，40k clean ablation 的结果显示：固定阈值的 image-space 分支在 \texttt{us} 上有明显提升，但在 \texttt{ra}、\texttt{tu} 与 \texttt{train} 上出现回落。这一现象与证据对齐表中的趋势一致，进一步说明仅靠固定阈值的 image-space 监督难以稳定随机面光源高光，必须引入分位数阈值、blur-only 与相对高光定义的组合机制。
 
 \subsection{训练数据策略}
 
-第二组实验用于区分“方法收益”与“数据扩充收益”。
+这一组表格当前用于明确后续补实验的协议设计，而不是报告已经完成的结果。其目的在于区分“方法收益”与“数据扩充收益”，并避免把更多训练数据带来的提升误写成方法本身的增益。
 
 \begin{table}[htbp]
 \centering
@@ -387,11 +533,11 @@ Run & uu & us & ra & tu & train \\
 
 \subsection{跨域泛化}
 
-第三组实验用于验证主方法是否可以迁移到未见数据域。
+这一组表格当前同样处于待补状态，主要用于固定后续跨域验证的报告方式。正式数值补齐前，本文只主张跨域协议已经被明确设计，而不提前宣称跨域性能结论。
 
 \begin{table}[htbp]
 \centering
-\caption{official、ecommerce 与 3D-FUTURE 上的跨域泛化结果}
+\caption{official、ecommerce 与 3D-FUTURE 上的跨域泛化结果（待补数值）}
 \begin{tabular}{lccc}
 \toprule
 方法 & official & ecommerce & 3D-FUTURE \\
@@ -406,7 +552,7 @@ Pure latent probe replacement & TBD & TBD & TBD \\
 
 \subsection{效率变体}
 
-probe 系列方法在论文中应作为效率变体呈现，而不应与主方法混为一体。
+probe 系列方法在论文中应作为效率变体呈现，而不应与主方法混为一体。当前表格的作用是展示效果-效率权衡的比较框架，其中 image-space 主方法负责效果主线，hybrid probe distillation 负责折中方案，pure latent replacement 负责负对照。
 
 \begin{table}[htbp]
 \centering
@@ -444,7 +590,7 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 
 \subsection{定性结果分析与图示组织原则}
 
-从当前 \texttt{wandb/media} 中的结果图来看，已有若干样例足以支撑论文初稿中的问题定义图、主对比图与效率图。首先，随机面光源划分中的若干样例已经明显展示出本文方法在宽而软高光条件下的优势。以 \texttt{jbhdfvfc} 和 \texttt{spuru5qy} 的 \texttt{unseen\_object\_with\_random\_area\_light\_condition} 面板为例，模型输出能够更接近目标图像的镜面明暗分布，并减少过度追随输入条件图像外观的问题。
+从当前 \texttt{wandb/media} 中的结果图来看，已有若干样例足以支撑论文初稿中的问题定义图、主对比图与效率图。当前写作策略采取“先可投稿、再逐步替换”的方式：先使用已经整理好的候选图完成正文排版，再随着 clean ablation 和跨域实验补齐进行局部替换。首先，随机面光源划分中的若干样例已经明显展示出本文方法在宽而软高光条件下的优势。以 \texttt{jbhdfvfc} 和 \texttt{spuru5qy} 的 \texttt{unseen\_object\_with\_random\_area\_light\_condition} 面板为例，模型输出能够更接近目标图像的镜面明暗分布，并减少过度追随输入条件图像外观的问题。
 
 其次，\texttt{unseen\_object\_with\_unseen\_envir} 与 \texttt{unseen\_object\_with\_seen\_envir} 中的一些样例能够较好地展示本文方法在主 held-out 任务上的一致性提升。这类图更适合作为正文主图，用于支撑“方法并非只在随机面光源上有效，而是在主测试协议上整体提升”的结论。
 
@@ -462,7 +608,7 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 \includegraphics[width=\linewidth]{problem_def_ra_failure_env.png}
 \caption{对应照明条件}
 \end{subfigure}
-\caption{问题定义图。早期分位数高光版本在随机面光源与宽波瓣高光条件下仍存在明显失稳现象，说明仅依赖绝对亮度或粗糙阈值策略不足以稳定高光监督。}
+\caption{问题定义图。该图优先使用 \texttt{nsniycxi} 的随机面光源失败样例，展示早期分位数高光版本在宽波瓣高光条件下仍存在明显失稳现象，说明仅依赖绝对亮度或粗糙阈值策略不足以稳定高光监督。}
 \label{fig:problem_def_cn}
 \end{figure}
 
@@ -471,6 +617,13 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 \svgorpng[width=\linewidth]{figures/highlight_supervision_flow}
 \caption{方法流程图。图中展示了前景优先掩码、局部相对高光计算、blur-only threshold estimation 与图像空间高光引导之间的关系。}
 \label{fig:method_flow_cn}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/official_background_teaser.png}
+\caption{官网风格的 official held-out 展示图。该图将目标环境图作为氛围背景，并将白底重光照结果重新组织为带背景的展示卡片，更适合在摘要页或定性结果开头快速传达方法在 \texttt{uu}、\texttt{us} 与 \texttt{ra} 三个划分上的整体视觉风格。}
+\label{fig:official_teaser_cn}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -497,7 +650,7 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 \begin{figure}[htbp]
 \centering
 \fbox{\rule{0pt}{5.0cm}\rule{0.92\linewidth}{0pt}}
-\caption{跨域对比图占位。预留 \texttt{official}、\texttt{ecommerce} 与 \texttt{3D-FUTURE} 三列，每列展示 baseline、本文方法与局部高光放大图。}
+\caption{跨域对比图待补示意位。预留 \texttt{official}、\texttt{ecommerce} 与 \texttt{3D-FUTURE} 三列，每列展示 baseline、本文方法与局部高光放大图；当前该位置仅用于版式规划，不代表跨域结果已全部补齐。}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -543,7 +696,7 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 \includegraphics[width=\linewidth]{official_ra_main_env.png}
 \caption{HDR/LDR 环境图}
 \end{subfigure}
-\caption{方法诊断图。前景感知高光监督不仅约束结果图像，还通过高光 mask、soft weight 与目标环境图共同提供更稳定的训练信号。}
+\caption{方法诊断图。图中的高光 mask 与 soft weight 是训练监督可视化，而非推理输出；它们与目标环境图共同展示了前景感知高光监督在训练阶段关注的空间区域。}
 \label{fig:diagnostic_cn}
 \end{figure}
 
@@ -569,7 +722,7 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 
 \begin{enumerate}
 \item 基于当前仓库已有 run 的“证据对齐版”消融表；
-\item 补齐缺失实验后的“最终 clean ablation 表”；
+\item 补齐缺失实验后的“最终 clean ablation 表”（目前已完成 image-space 固定阈值部分）；
 \item 单独的效率章节，用于展示 hybrid 与 pure latent probe 的效果-效率权衡。
 \end{enumerate}
 
@@ -584,6 +737,7 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 \item \texttt{spuru5qy} 是当前最均衡的 run，尤其适合突出随机面光源鲁棒性。
 \item \texttt{fi04f78e} 是当前最适合解释 local-relative highlight 定义的 run。
 \item \texttt{xkmlb19f} 与 \texttt{iepfybfu} 更适合作为效率侧证据，而不是主方法核心证据。
+\item 40k clean ablation 已完成 image-space 固定阈值对比（\texttt{abl00\_base} vs \texttt{abl01\_imgspace\_fixed}），可用于证明 image-space 分支必要性，但尚不足以替代主证据表。
 \end{enumerate}
 
 明确区分这些 run 的角色，有助于论文写作时避免把“主方法效果”与“效率变体效果”混为一谈。
@@ -606,13 +760,13 @@ Pure latent replacement（\texttt{iepfybfu}） & TBD & TBD & 30.0771 & 27.6759 &
 \begin{enumerate}
 \item 方法仍然依赖显式前景 mask 或较可靠的回退前景估计；
 \item 相对高光引导虽然提升了稳定性，但在极端材质与极端光照条件下仍无法完全消除歧义；
-\item 当前工作主要聚焦监督设计，而非显式物理分解，因此在理论上仍不具备严格的光传输一致性；
-\item 更大规模结构改造、显式 specular-diffuse 分解、阴影与高光联合建模，以及更强的多光照条件建模仍有待进一步研究。
+\item 当前工作主要聚焦监督设计，而非显式物理分解，因此对于镜面反射、阴影与材质响应的解释能力仍然有限；
+\item 当前正文中的 clean ablation、数据策略与跨域实验尚未全部补齐，因此部分结论仍应理解为阶段性证据而非终版结论。
 \end{enumerate}
 
 \section{结论}
 
-本文针对扩散式物体重光照在镜面材质与面光源条件下高光监督不稳定的问题，提出了一种前景掩码感知的相对高光引导框架。该框架通过前景优先掩码、局部相对高光定义、前景内分位数阈值、仅用于阈值估计的模糊以及图像空间高光辅助监督，共同提高了高光监督的稳定性与可解释性。现有结果表明，所提方法在主 held-out 设置上取得了稳定增益，并在随机面光源划分上表现出更强鲁棒性。进一步地，本文还通过 hybrid probe distillation 与 pure latent replacement 的对比，展示了图像空间高光分支在效果-效率权衡中的关键作用。后续工作将围绕 clean ablation、跨域实验与更规范的图示排版继续完善，从而形成完整的投稿版本。
+本文首先明确界定了扩散式物体重光照在镜面材质与面光源条件下的一个关键 failure mode，即高光监督对前景分离和绝对亮度阈值高度敏感。围绕这一问题，本文提出了前景掩码感知的相对高光引导框架，并将前景优先掩码、局部相对高光定义、前景内分位数阈值、仅用于阈值估计的模糊以及图像空间高光辅助监督组织为统一的监督设计。基于当前 corrected-baseline 证据，本文主方法在主 held-out 设置上已经形成稳定增益趋势，其中 \texttt{jbhdfvfc} 可作为主 held-out 锚点，\texttt{spuru5qy} 可作为随机面光源鲁棒性证据，\texttt{fi04f78e} 可作为相对高光定义的解释性 run。与此同时，本文也明确保留了 clean ablation、数据策略与跨域实验的待补空间，后续工作将继续围绕这些部分补齐终版投稿所需的证据链。
 
 \section*{作者信息}
 

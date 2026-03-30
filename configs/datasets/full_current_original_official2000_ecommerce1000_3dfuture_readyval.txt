@@ -1,0 +1,6 @@
+output_dir = logs/neural_gaffer_training_fullmain_readyval
+train_img_dir = /4T/CXY/Neural_Gaffer/logs/dataset_unions/full_current_original_official2000_ecommerce1000_3dfuture/images
+train_lighting_dir = /4T/CXY/Neural_Gaffer/logs/dataset_unions/full_current_original_official2000_ecommerce1000_3dfuture/lighting
+val_img_dir = /4T/CXY/Neural_Gaffer/logs/dataset_validation_unions/full_main_ready_20260329/images
+val_lighting_dir = /4T/CXY/Neural_Gaffer/logs/dataset_validation_unions/full_main_ready_20260329/lighting
+wandb_run_note = fullmain_readyval

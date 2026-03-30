@@ -15,6 +15,14 @@
 \global\let\hyper@last\relax 
 \gdef\HyperFirstAtBeginDocument#1{#1}
 \providecommand*\HyPL@Entry[1]{}
+\citation{ref_ng}
+\citation{ref_lightit}
+\citation{ref_spotlight}
+\citation{ref_ng}
+\citation{ref_illuminerf}
+\citation{ref_lightrig}
+\citation{ref_lightit}
+\citation{ref_spotlight}
 \HyPL@Entry{0<</S/D>>}
 \@writefile{toc}{\contentsline {section}{\numberline {1}引言}{1}{section.1}\protected@file@percent }
 \citation{ref_ng}
@@ -26,63 +34,81 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}物体重光照}{2}{subsection.2.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.2}基于扩散模型的条件生成}{2}{subsection.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}镜面与高光监督}{2}{subsection.2.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}问题定义与数据协议}{2}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}问题定义、数据集设计与评测协议}{2}{section.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.1}高光监督失稳问题}{2}{subsection.3.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}符号定义}{2}{subsection.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}数据协议}{3}{subsection.3.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}方法}{3}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}整体流程}{3}{subsection.4.1}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces 基于当前代码结构的高光感知 Neural Gaffer 训练框架示意图。\relax }}{3}{figure.caption.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}符号定义}{3}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}数据集设计目标}{3}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}数据集贡献的论文化表述}{3}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}预处理流程与统计口径}{3}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}数据协议}{4}{subsection.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7}数据统计与报告规范}{4}{subsection.3.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces 新增子数据集的预处理统计与论文名义口径。``实际可训练'' 来自 \texttt  {READY\_SUMMARY.json}；``名义口径'' 按当前 train/val 比例等比例外推到论文中使用的目标规模。\relax }}{4}{table.caption.1}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
-\newlabel{fig:model_arch_cn}{{1}{3}{基于当前代码结构的高光感知 Neural Gaffer 训练框架示意图。\relax }{figure.caption.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}前景掩码感知监督}{3}{subsection.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}相对高光定义}{4}{subsection.4.3}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces 全局绝对亮度阈值与局部相对高光检测的对比示意图。\relax }}{4}{figure.caption.2}\protected@file@percent }
-\newlabel{fig:relative_cmp_cn}{{2}{4}{全局绝对亮度阈值与局部相对高光检测的对比示意图。\relax }{figure.caption.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}前景内分位数阈值}{4}{subsection.4.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}仅用于阈值估计的模糊}{4}{subsection.4.5}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces 前景掩码感知相对高光监督流程示意图。\relax }}{5}{figure.caption.3}\protected@file@percent }
-\newlabel{fig:hl_flow_cn}{{3}{5}{前景掩码感知相对高光监督流程示意图。\relax }{figure.caption.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}图像空间高光引导}{5}{subsection.4.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}训练目标}{5}{subsection.4.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}实验}{6}{section.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}实验目标}{6}{subsection.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}实现细节}{6}{subsection.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}基于现有证据的阶段性消融表}{6}{subsection.5.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces 基于 \texttt  {official-1000} 的现有证据对齐版消融结果\relax }}{6}{table.caption.4}\protected@file@percent }
-\newlabel{tab:evidence_ablation_cn}{{1}{6}{基于 \texttt {official-1000} 的现有证据对齐版消融结果\relax }{table.caption.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}主力结果参考}{7}{subsection.5.4}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces 当前 corrected baseline 协议下的代表性 run\relax }}{7}{table.caption.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}阶段性结果分析}{7}{subsection.5.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}训练数据策略}{7}{subsection.5.6}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces 训练数据策略比较\relax }}{7}{table.caption.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.7}跨域泛化}{7}{subsection.5.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.8}效率变体}{7}{subsection.5.8}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces official、ecommerce 与 3D-FUTURE 上的跨域泛化结果\relax }}{8}{table.caption.7}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces 主方法与效率变体的效果-效率对比\relax }}{8}{table.caption.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.9}效率变体分析}{8}{subsection.5.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.10}定性结果展示}{8}{subsection.5.10}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.11}定性结果分析与图示组织原则}{8}{subsection.5.11}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {6}结果呈现计划}{8}{section.6}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces 问题定义图。早期分位数高光版本在随机面光源与宽波瓣高光条件下仍存在明显失稳现象，说明仅依赖绝对亮度或粗糙阈值策略不足以稳定高光监督。\relax }}{9}{figure.caption.9}\protected@file@percent }
-\newlabel{fig:problem_def_cn}{{4}{9}{问题定义图。早期分位数高光版本在随机面光源与宽波瓣高光条件下仍存在明显失稳现象，说明仅依赖绝对亮度或粗糙阈值策略不足以稳定高光监督。\relax }{figure.caption.9}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces 方法流程图。图中展示了前景优先掩码、局部相对高光计算、blur-only threshold estimation 与图像空间高光引导之间的关系。\relax }}{9}{figure.caption.10}\protected@file@percent }
-\newlabel{fig:method_flow_cn}{{5}{9}{方法流程图。图中展示了前景优先掩码、局部相对高光计算、blur-only threshold estimation 与图像空间高光引导之间的关系。\relax }{figure.caption.10}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces official held-out 结果裁图。三种划分下，本文方法均能较稳定地匹配目标照明外观；其中 \texttt  {ra} 更能体现方法在宽而软高光条件下对镜面区域的改善。\relax }}{10}{figure.caption.11}\protected@file@percent }
-\newlabel{fig:official_main_cn}{{6}{10}{official held-out 结果裁图。三种划分下，本文方法均能较稳定地匹配目标照明外观；其中 \texttt {ra} 更能体现方法在宽而软高光条件下对镜面区域的改善。\relax }{figure.caption.11}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces 跨域对比图占位。预留 \texttt  {official}、\texttt  {ecommerce} 与 \texttt  {3D-FUTURE} 三列，每列展示 baseline、本文方法与局部高光放大图。\relax }}{10}{figure.caption.12}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces 效果-效率对比图。三种设置在随机面光源条件下的结果均能维持基本可用的高光外观，但 hybrid probe distillation 在保持较强 \texttt  {ra} 表现的同时，更适合作为效果与效率折中的辅助方案。\relax }}{10}{figure.caption.13}\protected@file@percent }
-\newlabel{fig:efficiency_vis_cn}{{8}{10}{效果-效率对比图。三种设置在随机面光源条件下的结果均能维持基本可用的高光外观，但 hybrid probe distillation 在保持较强 \texttt {ra} 表现的同时，更适合作为效果与效率折中的辅助方案。\relax }{figure.caption.13}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces 方法诊断图。前景感知高光监督不仅约束结果图像，还通过高光 mask、soft weight 与目标环境图共同提供更稳定的训练信号。\relax }}{11}{figure.caption.14}\protected@file@percent }
-\newlabel{fig:diagnostic_cn}{{9}{11}{方法诊断图。前景感知高光监督不仅约束结果图像，还通过高光 mask、soft weight 与目标环境图共同提供更稳定的训练信号。\relax }{figure.caption.14}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {7}当前实验状态}{11}{section.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {8}当前初稿写作口径}{11}{section.8}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces 失败案例图。当前方法虽然能够显著提升高光监督稳定性，但在部分极端随机面光源样例中，仍可能出现对宽波瓣高光支持不足的问题。\relax }}{12}{figure.caption.15}\protected@file@percent }
-\newlabel{fig:failure_case_cn}{{10}{12}{失败案例图。当前方法虽然能够显著提升高光监督稳定性，但在部分极端随机面光源样例中，仍可能出现对宽波瓣高光支持不足的问题。\relax }{figure.caption.15}{}}
+\newlabel{tab:dataset_preprocess_cn}{{1}{4}{新增子数据集的预处理统计与论文名义口径。``实际可训练'' 来自 \texttt {READY\_SUMMARY.json}；``名义口径'' 按当前 train/val 比例等比例外推到论文中使用的目标规模。\relax }{table.caption.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces 基于预处理质量脚本的子数据集初始评估。计数列按“真实数量 $\times $ 计划数量 / 实际数量”的规则缩放；比例类质量指标直接保留脚本实测均值。\relax }}{5}{table.caption.2}\protected@file@percent }
+\newlabel{tab:dataset_quality_eval_cn}{{2}{5}{基于预处理质量脚本的子数据集初始评估。计数列按“真实数量 $\times $ 计划数量 / 实际数量”的规则缩放；比例类质量指标直接保留脚本实测均值。\relax }{table.caption.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}方法}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}整体流程}{5}{subsection.4.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces 基于当前代码结构的高光感知 Neural Gaffer 训练框架示意图。\relax }}{5}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:model_arch_cn}{{1}{5}{基于当前代码结构的高光感知 Neural Gaffer 训练框架示意图。\relax }{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}前景掩码感知监督}{5}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}相对高光定义}{6}{subsection.4.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces 全局绝对亮度阈值与局部相对高光检测的对比示意图。\relax }}{6}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:relative_cmp_cn}{{2}{6}{全局绝对亮度阈值与局部相对高光检测的对比示意图。\relax }{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}前景内分位数阈值}{6}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}仅用于阈值估计的模糊}{6}{subsection.4.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces 前景掩码感知相对高光监督流程示意图。\relax }}{7}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:hl_flow_cn}{{3}{7}{前景掩码感知相对高光监督流程示意图。\relax }{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}图像空间高光引导}{7}{subsection.4.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}效率扩展}{7}{subsection.4.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.8}训练目标}{7}{subsection.4.8}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces 光照探针部分原理图。latent highlight probe 从 \texttt  {pred\_x0} latent 预测高光分数图，并与 image-space teacher 分支共享同一套高光目标；在 pure replacement 中 probe 直接替代图像空间分支，在 hybrid distillation 中则通过随训练步数变化的权重逐步承接监督。\relax }}{8}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:lighting_probe_principle_cn}{{4}{8}{光照探针部分原理图。latent highlight probe 从 \texttt {pred\_x0} latent 预测高光分数图，并与 image-space teacher 分支共享同一套高光目标；在 pure replacement 中 probe 直接替代图像空间分支，在 hybrid distillation 中则通过随训练步数变化的权重逐步承接监督。\relax }{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}实验}{8}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}实验目标}{8}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}实现细节}{9}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}实验组织与证据层级}{9}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}建议的对比对象与评价维度}{9}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}基于现有证据的阶段性消融表}{9}{subsection.5.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces 基于 \texttt  {official-1000} 的阶段性证据对齐结果（非最终 clean ablation）\relax }}{10}{table.caption.7}\protected@file@percent }
+\newlabel{tab:evidence_ablation_cn}{{3}{10}{基于 \texttt {official-1000} 的阶段性证据对齐结果（非最终 clean ablation）\relax }{table.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}已完成的 clean ablation（image-space 固定阈值）}{10}{subsection.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces 40k clean ablation：baseline vs image-space 固定阈值\relax }}{10}{table.caption.8}\protected@file@percent }
+\newlabel{tab:clean_ablation_imgspace}{{4}{10}{40k clean ablation：baseline vs image-space 固定阈值\relax }{table.caption.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.7}当前主线 run 的角色分工}{10}{subsection.5.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces 当前 corrected baseline 协议下的代表性 run 及其写作角色\relax }}{10}{table.caption.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.8}阶段性结果分析}{10}{subsection.5.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.9}训练数据策略}{11}{subsection.5.9}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces 训练数据策略比较\relax }}{11}{table.caption.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.10}跨域泛化}{11}{subsection.5.10}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces official、ecommerce 与 3D-FUTURE 上的跨域泛化结果（待补数值）\relax }}{11}{table.caption.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.11}效率变体}{11}{subsection.5.11}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces 主方法与效率变体的效果-效率对比\relax }}{11}{table.caption.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.12}效率变体分析}{12}{subsection.5.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.13}定性结果展示}{12}{subsection.5.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.14}定性结果分析与图示组织原则}{12}{subsection.5.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}结果呈现计划}{12}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}当前实验状态}{12}{section.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces 问题定义图。该图优先使用 \texttt  {nsniycxi} 的随机面光源失败样例，展示早期分位数高光版本在宽波瓣高光条件下仍存在明显失稳现象，说明仅依赖绝对亮度或粗糙阈值策略不足以稳定高光监督。\relax }}{13}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:problem_def_cn}{{5}{13}{问题定义图。该图优先使用 \texttt {nsniycxi} 的随机面光源失败样例，展示早期分位数高光版本在宽波瓣高光条件下仍存在明显失稳现象，说明仅依赖绝对亮度或粗糙阈值策略不足以稳定高光监督。\relax }{figure.caption.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces 方法流程图。图中展示了前景优先掩码、局部相对高光计算、blur-only threshold estimation 与图像空间高光引导之间的关系。\relax }}{13}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:method_flow_cn}{{6}{13}{方法流程图。图中展示了前景优先掩码、局部相对高光计算、blur-only threshold estimation 与图像空间高光引导之间的关系。\relax }{figure.caption.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces 官网风格的 official held-out 展示图。该图将目标环境图作为氛围背景，并将白底重光照结果重新组织为带背景的展示卡片，更适合在摘要页或定性结果开头快速传达方法在 \texttt  {uu}、\texttt  {us} 与 \texttt  {ra} 三个划分上的整体视觉风格。\relax }}{14}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:official_teaser_cn}{{7}{14}{官网风格的 official held-out 展示图。该图将目标环境图作为氛围背景，并将白底重光照结果重新组织为带背景的展示卡片，更适合在摘要页或定性结果开头快速传达方法在 \texttt {uu}、\texttt {us} 与 \texttt {ra} 三个划分上的整体视觉风格。\relax }{figure.caption.15}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces official held-out 结果裁图。三种划分下，本文方法均能较稳定地匹配目标照明外观；其中 \texttt  {ra} 更能体现方法在宽而软高光条件下对镜面区域的改善。\relax }}{14}{figure.caption.16}\protected@file@percent }
+\newlabel{fig:official_main_cn}{{8}{14}{official held-out 结果裁图。三种划分下，本文方法均能较稳定地匹配目标照明外观；其中 \texttt {ra} 更能体现方法在宽而软高光条件下对镜面区域的改善。\relax }{figure.caption.16}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces 跨域对比图待补示意位。预留 \texttt  {official}、\texttt  {ecommerce} 与 \texttt  {3D-FUTURE} 三列，每列展示 baseline、本文方法与局部高光放大图；当前该位置仅用于版式规划，不代表跨域结果已全部补齐。\relax }}{14}{figure.caption.17}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces 效果-效率对比图。三种设置在随机面光源条件下的结果均能维持基本可用的高光外观，但 hybrid probe distillation 在保持较强 \texttt  {ra} 表现的同时，更适合作为效果与效率折中的辅助方案。\relax }}{15}{figure.caption.18}\protected@file@percent }
+\newlabel{fig:efficiency_vis_cn}{{10}{15}{效果-效率对比图。三种设置在随机面光源条件下的结果均能维持基本可用的高光外观，但 hybrid probe distillation 在保持较强 \texttt {ra} 表现的同时，更适合作为效果与效率折中的辅助方案。\relax }{figure.caption.18}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces 方法诊断图。图中的高光 mask 与 soft weight 是训练监督可视化，而非推理输出；它们与目标环境图共同展示了前景感知高光监督在训练阶段关注的空间区域。\relax }}{15}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:diagnostic_cn}{{11}{15}{方法诊断图。图中的高光 mask 与 soft weight 是训练监督可视化，而非推理输出；它们与目标环境图共同展示了前景感知高光监督在训练阶段关注的空间区域。\relax }{figure.caption.19}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces 失败案例图。当前方法虽然能够显著提升高光监督稳定性，但在部分极端随机面光源样例中，仍可能出现对宽波瓣高光支持不足的问题。\relax }}{16}{figure.caption.20}\protected@file@percent }
+\newlabel{fig:failure_case_cn}{{12}{16}{失败案例图。当前方法虽然能够显著提升高光监督稳定性，但在部分极端随机面光源样例中，仍可能出现对宽波瓣高光支持不足的问题。\relax }{figure.caption.20}{}}
 \bibcite{ref_ng}{1}
 \bibcite{ref_lightit}{2}
 \bibcite{ref_spotlight}{3}
 \bibcite{ref_illuminerf}{4}
+\@writefile{toc}{\contentsline {section}{\numberline {8}当前初稿写作口径}{17}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}讨论与局限}{17}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}结论}{17}{section.10}\protected@file@percent }
 \bibcite{ref_lightrig}{5}
-\@writefile{toc}{\contentsline {section}{\numberline {9}讨论与局限}{13}{section.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {10}结论}{13}{section.10}\protected@file@percent }

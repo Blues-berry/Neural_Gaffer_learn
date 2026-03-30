@@ -73,6 +73,18 @@ def parse_args(input_args=None):
         default="./",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
+    parser.add_argument(
+        "--dump_stage_outputs",
+        type=parse_bool,
+        default=False,
+        help="Whether to export per-sample stage images such as input, target lighting, pred_x0, highlight diagnostics, and final relighting results.",
+    )
+    parser.add_argument(
+        "--dump_stage_max_samples",
+        type=int,
+        default=8,
+        help="Maximum number of samples to export with detailed stage outputs.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
@@ -142,6 +154,12 @@ def parse_args(input_args=None):
         type=int,
         default=72000,
         help="Continuously refresh a dedicated best-validation checkpoint only up to this optimization step.",
+    )
+    parser.add_argument(
+        "--best_checkpoint_random_area_light_psnr_floor",
+        type=float,
+        default=None,
+        help="Optional floor on PSNR/unseen_object_with_random_area_light_condition. If set, checkpoints below this floor will not be marked as best even when the held-out mean improves.",
     )
     parser.add_argument(
         "--non_finite_early_stop_patience",
@@ -490,6 +508,73 @@ def parse_args(input_args=None):
         default=0.1,
         help="Probability of replacing the training condition image with the random area-light rendering.",
     )
+    parser.add_argument(
+        "--random_lighting_condition_prob_schedule",
+        type=str,
+        default="constant",
+        choices=["constant", "three_phase"],
+        help="Scheduling mode for the random area-light condition probability.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_prob_start",
+        type=float,
+        default=None,
+        help="Initial random area-light condition probability used by the three-phase schedule.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_prob_peak",
+        type=float,
+        default=None,
+        help="Peak random area-light condition probability used by the three-phase schedule.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_prob_end",
+        type=float,
+        default=None,
+        help="Final random area-light condition probability used by the three-phase schedule.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_prob_warmup_steps",
+        type=int,
+        default=0,
+        help="Number of steps used to ramp from start to peak random area-light condition probability.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_prob_cooldown_start_step",
+        type=int,
+        default=0,
+        help="Step at which the random area-light condition probability starts decaying from peak to end.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_jitter_prob",
+        type=float,
+        default=0.0,
+        help="Probability of applying lightweight brightness/gamma jitter to random-light condition images during training.",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_brightness_jitter",
+        type=float,
+        default=0.0,
+        help="Max relative brightness jitter applied to random-light condition images. A value of 0.08 means sampling a factor from [0.92, 1.08].",
+    )
+    parser.add_argument(
+        "--random_lighting_condition_gamma_jitter",
+        type=float,
+        default=0.0,
+        help="Max relative gamma jitter applied to random-light condition images. A value of 0.08 means sampling gamma from [0.92, 1.08].",
+    )
+    parser.add_argument(
+        "--random_lighting_highlight_loss_weight_scale",
+        type=float,
+        default=1.0,
+        help="Per-sample multiplier applied to highlight extra-weight for training samples whose condition image comes from the random area-light branch.",
+    )
+    parser.add_argument(
+        "--random_lighting_highlight_dilate_kernel_size",
+        type=int,
+        default=1,
+        help="Optional odd dilation kernel size applied to highlight score/mask maps for random area-light condition samples. Values <= 1 disable the relaxation.",
+    )
 
     parser.add_argument(
         "--train_img_dir",
@@ -588,6 +673,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--reuse_last_wandb_project",
+        type=parse_bool,
+        default=True,
+        help="Whether to reuse the most recent local wandb project name. Disable this when starting a fresh ablation project.",
+    )
+    parser.add_argument(
         "--wandb_run_name",
         type=str,
         default=None,
@@ -616,6 +707,12 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="Optional wandb resume mode such as allow, must, auto, or never.",
+    )
+    parser.add_argument(
+        "--auto_run_output_dir",
+        type=parse_bool,
+        default=True,
+        help="Automatically create a per-run output directory named after the resolved wandb run.",
     )
 
     parser.add_argument(

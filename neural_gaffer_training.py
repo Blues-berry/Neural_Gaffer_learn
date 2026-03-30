@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import multiprocessing as mp
 import os
 import re
 import shutil
@@ -290,6 +291,70 @@ def blend_schedule_scale(progress: float, final_scale: float) -> float:
     return 1.0 + (float(final_scale) - 1.0) * progress
 
 
+def compute_random_lighting_condition_prob(args, global_step: int) -> float:
+    schedule = str(getattr(args, "random_lighting_condition_prob_schedule", "constant") or "constant").lower()
+    base_prob = float(getattr(args, "random_lighting_condition_prob", 0.1) or 0.1)
+    if schedule != "three_phase":
+        return base_prob
+
+    start_prob = float(
+        getattr(args, "random_lighting_condition_prob_start", None)
+        if getattr(args, "random_lighting_condition_prob_start", None) is not None
+        else base_prob
+    )
+    peak_prob = float(
+        getattr(args, "random_lighting_condition_prob_peak", None)
+        if getattr(args, "random_lighting_condition_prob_peak", None) is not None
+        else base_prob
+    )
+    end_prob = float(
+        getattr(args, "random_lighting_condition_prob_end", None)
+        if getattr(args, "random_lighting_condition_prob_end", None) is not None
+        else peak_prob
+    )
+    warmup_steps = max(int(getattr(args, "random_lighting_condition_prob_warmup_steps", 0) or 0), 0)
+    cooldown_start_step = max(int(getattr(args, "random_lighting_condition_prob_cooldown_start_step", 0) or 0), 0)
+    max_train_steps = max(int(getattr(args, "max_train_steps", 0) or 0), 1)
+
+    if warmup_steps > 0 and global_step < warmup_steps:
+        progress = float(global_step) / float(max(warmup_steps, 1))
+        return start_prob + (peak_prob - start_prob) * progress
+    if cooldown_start_step <= 0 or cooldown_start_step >= max_train_steps:
+        return peak_prob
+    if global_step < cooldown_start_step:
+        return peak_prob
+    if global_step >= max_train_steps:
+        return end_prob
+
+    cooldown_progress = float(global_step - cooldown_start_step) / float(max(max_train_steps - cooldown_start_step, 1))
+    cooldown_progress = min(max(cooldown_progress, 0.0), 1.0)
+    return peak_prob + (end_prob - peak_prob) * cooldown_progress
+
+
+def set_shared_random_lighting_condition_prob(prob_state, value: float) -> None:
+    if prob_state is None:
+        return
+    try:
+        with prob_state.get_lock():
+            prob_state.value = float(value)
+    except Exception:
+        prob_state.value = float(value)
+
+
+def resolve_effective_output_dir(output_dir: str, run_name: str | None, auto_run_output_dir: bool, resume_from_checkpoint) -> str:
+    if not output_dir:
+        return output_dir
+    if not auto_run_output_dir or resume_from_checkpoint:
+        return output_dir
+    if not run_name:
+        return output_dir
+
+    output_path = Path(output_dir)
+    if output_path.name == run_name:
+        return str(output_path)
+    return str(output_path / run_name)
+
+
 def extract_validation_psnr_score(step_log: dict) -> tuple[float | None, list[str]]:
     values = []
     metric_keys = []
@@ -334,6 +399,14 @@ def extract_validation_pred_mean(step_log: dict) -> float | None:
         return None
 
     return float(min(pred_means))
+
+
+def extract_random_area_light_psnr(step_log: dict) -> float | None:
+    metric_key = "PSNR/unseen_object_with_random_area_light_condition"
+    metric_value = step_log.get(metric_key)
+    if isinstance(metric_value, (int, float)) and math.isfinite(float(metric_value)):
+        return float(metric_value)
+    return None
 
 
 def load_best_pre72k_metadata(output_dir: str) -> dict | None:
@@ -1218,7 +1291,103 @@ def compute_highlight_weight_map(
         relative_eps=relative_eps,
         provided_foreground_mask=provided_foreground_mask,
     )
-    return foreground_mask * (1.0 + extra_weight * highlight_score)
+    extra_weight_tensor = torch.as_tensor(extra_weight, device=highlight_score.device, dtype=highlight_score.dtype)
+    if extra_weight_tensor.ndim == 0:
+        extra_weight_tensor = extra_weight_tensor.view(1, 1, 1, 1)
+    elif extra_weight_tensor.ndim == 1:
+        extra_weight_tensor = extra_weight_tensor.view(-1, 1, 1, 1)
+    return foreground_mask * (1.0 + extra_weight_tensor * highlight_score)
+
+
+def maybe_relax_random_lighting_highlight_maps(
+    highlight_score: torch.Tensor,
+    highlight_mask: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    random_condition_mask: torch.Tensor | None,
+    dilate_kernel_size: int,
+):
+    if random_condition_mask is None:
+        return highlight_score, highlight_mask
+
+    kernel_size = max(int(dilate_kernel_size or 0), 1)
+    if kernel_size <= 1:
+        return highlight_score, highlight_mask
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+
+    random_condition_mask = random_condition_mask.to(
+        device=highlight_score.device,
+        dtype=highlight_score.dtype,
+    ).view(-1, 1, 1, 1)
+    if torch.count_nonzero(random_condition_mask > 0.5) == 0:
+        return highlight_score, highlight_mask
+
+    dilated_score = F.max_pool2d(highlight_score, kernel_size=kernel_size, stride=1, padding=kernel_size // 2)
+    dilated_mask = F.max_pool2d(highlight_mask, kernel_size=kernel_size, stride=1, padding=kernel_size // 2)
+
+    highlight_score = torch.where(random_condition_mask > 0.5, dilated_score, highlight_score)
+    highlight_mask = torch.where(random_condition_mask > 0.5, dilated_mask, highlight_mask)
+
+    highlight_score = highlight_score * foreground_mask
+    highlight_mask = highlight_mask * foreground_mask
+    return highlight_score, highlight_mask
+
+
+def compute_training_highlight_maps(
+    gt_image: torch.Tensor,
+    latent_hw: tuple[int, int],
+    args,
+    foreground_mask: torch.Tensor | None = None,
+    random_condition_mask: torch.Tensor | None = None,
+):
+    highlight_score, highlight_mask, resolved_foreground_mask = compute_highlight_score_map(
+        gt_image=gt_image,
+        latent_hw=latent_hw,
+        threshold=getattr(args, "highlight_threshold", 0.8),
+        soft_weighting=getattr(args, "highlight_soft_weighting", False),
+        gamma=getattr(args, "highlight_gamma", 2.0),
+        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
+        use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
+        highlight_quantile=getattr(args, "highlight_quantile", 0.95),
+        min_threshold=getattr(args, "highlight_min_threshold", 0.6),
+        max_threshold=getattr(args, "highlight_max_threshold", 0.95),
+        quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
+        relative_mode=getattr(args, "highlight_relative_mode", "none"),
+        local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
+        relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
+        provided_foreground_mask=foreground_mask,
+    )
+    highlight_score, highlight_mask = maybe_relax_random_lighting_highlight_maps(
+        highlight_score=highlight_score,
+        highlight_mask=highlight_mask,
+        foreground_mask=resolved_foreground_mask,
+        random_condition_mask=random_condition_mask,
+        dilate_kernel_size=getattr(args, "random_lighting_highlight_dilate_kernel_size", 1),
+    )
+    return highlight_score, highlight_mask, resolved_foreground_mask
+
+
+def compute_training_highlight_weight_map(
+    gt_image: torch.Tensor,
+    latent_hw: tuple[int, int],
+    extra_weight,
+    args,
+    foreground_mask: torch.Tensor | None = None,
+    random_condition_mask: torch.Tensor | None = None,
+):
+    highlight_score, _, resolved_foreground_mask = compute_training_highlight_maps(
+        gt_image=gt_image,
+        latent_hw=latent_hw,
+        args=args,
+        foreground_mask=foreground_mask,
+        random_condition_mask=random_condition_mask,
+    )
+    extra_weight_tensor = torch.as_tensor(extra_weight, device=highlight_score.device, dtype=highlight_score.dtype)
+    if extra_weight_tensor.ndim == 0:
+        extra_weight_tensor = extra_weight_tensor.view(1, 1, 1, 1)
+    elif extra_weight_tensor.ndim == 1:
+        extra_weight_tensor = extra_weight_tensor.view(-1, 1, 1, 1)
+    return resolved_foreground_mask * (1.0 + extra_weight_tensor * highlight_score)
 
 
 def predict_x0_from_model_pred(
@@ -1476,6 +1645,8 @@ def resolve_wandb_project_name(args) -> str:
     优先沿用本地最近一次 wandb run 的项目名，找不到时回退到配置值。
     """
     fallback_project = getattr(args, "tracker_project_name", "train_neural_gaffer_private")
+    if not getattr(args, "reuse_last_wandb_project", True):
+        return fallback_project
     workspace_root = Path(__file__).resolve().parent
     debug_log_path = workspace_root / "wandb" / "latest-run" / "logs" / "debug.log"
 
@@ -1541,6 +1712,9 @@ def build_wandb_run_name(args) -> str:
     use_hybrid_probe_distillation = getattr(args, "use_hybrid_probe_distillation", False)
     use_image_space_highlight_loss = requested_image_space_highlight_loss and not replace_image_space_with_latent_probe
     random_lighting_condition_prob = getattr(args, "random_lighting_condition_prob", 0.1)
+    random_lighting_condition_prob_schedule = str(
+        getattr(args, "random_lighting_condition_prob_schedule", "constant") or "constant"
+    ).lower()
 
     if use_highlight_weighted_loss:
         parts.append("latentsoft" if getattr(args, "highlight_soft_weighting", False) else "latenthard")
@@ -1585,7 +1759,25 @@ def build_wandb_run_name(args) -> str:
     if relative_mode_token:
         parts.append(relative_mode_token)
         parts.append(f"k{local_kernel_size}")
-    parts.append(f"r{_format_run_float_token(random_lighting_condition_prob, scale=100)}")
+    if random_lighting_condition_prob_schedule == "three_phase":
+        start_prob = getattr(args, "random_lighting_condition_prob_start", None)
+        peak_prob = getattr(args, "random_lighting_condition_prob_peak", None)
+        end_prob = getattr(args, "random_lighting_condition_prob_end", None)
+        start_prob = float(start_prob if start_prob is not None else random_lighting_condition_prob)
+        peak_prob = float(peak_prob if peak_prob is not None else random_lighting_condition_prob)
+        end_prob = float(end_prob if end_prob is not None else peak_prob)
+        parts.append(
+            "rc"
+            + "-".join(
+                [
+                    _format_run_float_token(start_prob, scale=100),
+                    _format_run_float_token(peak_prob, scale=100),
+                    _format_run_float_token(end_prob, scale=100),
+                ]
+            )
+        )
+    else:
+        parts.append(f"r{_format_run_float_token(random_lighting_condition_prob, scale=100)}")
     if extra_weight is not None and (use_highlight_weighted_loss or use_image_space_highlight_loss):
         parts.append(f"w{extra_weight:g}")
     if gamma is not None and getattr(args, "highlight_soft_weighting", False):
@@ -1606,6 +1798,13 @@ def build_wandb_run_name(args) -> str:
                 parts.append(f"hwu{int(highlight_loss_weight_warmup_steps / 1000)}k")
     if use_latent_highlight_probe and latent_highlight_probe_warmup_steps > 0:
         parts.append(f"lpwu{int(latent_highlight_probe_warmup_steps / 1000)}k")
+    random_lighting_highlight_loss_weight_scale = float(
+        getattr(args, "random_lighting_highlight_loss_weight_scale", 1.0) or 1.0
+    )
+    if abs(random_lighting_highlight_loss_weight_scale - 1.0) > 1e-6:
+        parts.append(
+            f"rws{_format_run_float_token(random_lighting_highlight_loss_weight_scale, scale=100)}"
+        )
     if getattr(args, "max_train_steps", None):
         parts.append(f"{int(args.max_train_steps / 1000)}k")
 
@@ -1646,6 +1845,19 @@ def _encode_image_without_pose(image_encoder, image, device, dtype, do_classifie
     return prompt_embeds
 
 def main(args):
+    tracker_project_name = None
+    tracker_run_name = None
+    use_wandb_tracking = str(getattr(args, "report_to", "") or "").lower() in {"wandb", "all"}
+    if use_wandb_tracking:
+        tracker_project_name = resolve_wandb_project_name(args)
+        tracker_run_name = build_wandb_run_name(args)
+        args.output_dir = resolve_effective_output_dir(
+            args.output_dir,
+            tracker_run_name,
+            auto_run_output_dir=getattr(args, "auto_run_output_dir", True),
+            resume_from_checkpoint=args.resume_from_checkpoint,
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -1897,14 +2109,30 @@ def main(args):
         )
     else:
         logger.info("Hybrid probe distillation disabled")
-    logger.info(
-        "Training random area-light condition probability=%s",
-        getattr(args, "random_lighting_condition_prob", 0.1),
-    )
+    random_lighting_schedule = str(getattr(args, "random_lighting_condition_prob_schedule", "constant") or "constant").lower()
+    if random_lighting_schedule == "three_phase":
+        logger.info(
+            "Training random area-light condition probability schedule=three_phase start=%s peak=%s end=%s warmup_steps=%s cooldown_start_step=%s",
+            getattr(args, "random_lighting_condition_prob_start", None),
+            getattr(args, "random_lighting_condition_prob_peak", None),
+            getattr(args, "random_lighting_condition_prob_end", None),
+            getattr(args, "random_lighting_condition_prob_warmup_steps", 0),
+            getattr(args, "random_lighting_condition_prob_cooldown_start_step", 0),
+        )
+    else:
+        logger.info(
+            "Training random area-light condition probability=%s",
+            getattr(args, "random_lighting_condition_prob", 0.1),
+        )
     logger.info(
         "Best pre-window checkpoint tracking enabled until step=%s using held-out mean PSNR",
         getattr(args, "best_checkpoint_until_step", 72000),
     )
+    if getattr(args, "best_checkpoint_random_area_light_psnr_floor", None) is not None:
+        logger.info(
+            "Best checkpoint selection also requires PSNR/unseen_object_with_random_area_light_condition >= %s",
+            getattr(args, "best_checkpoint_random_area_light_psnr_floor", None),
+        )
     logger.info(
         "Training guards: non_finite_patience=%s collapse_enabled=%s collapse_psnr_threshold=%s collapse_relative_ratio=%s",
         getattr(args, "non_finite_early_stop_patience", 3),
@@ -1941,6 +2169,10 @@ def main(args):
         ]
     )
     foreground_background_threshold = getattr(args, "foreground_background_threshold", 0.98)
+    random_lighting_condition_prob_state = mp.Value(
+        "d",
+        float(compute_random_lighting_condition_prob(args, 0)),
+    )
  
     
     train_dataset = NeuralGafferTrainingData(
@@ -1955,6 +2187,10 @@ def main(args):
         dataset_type='training_object_with_seen_envir',
         random_lighting_condition_prob=args.random_lighting_condition_prob,
         foreground_background_threshold=foreground_background_threshold,
+        random_lighting_condition_prob_state=random_lighting_condition_prob_state,
+        random_lighting_condition_jitter_prob=getattr(args, "random_lighting_condition_jitter_prob", 0.0),
+        random_lighting_condition_brightness_jitter=getattr(args, "random_lighting_condition_brightness_jitter", 0.0),
+        random_lighting_condition_gamma_jitter=getattr(args, "random_lighting_condition_gamma_jitter", 0.0),
         )
     
     # validate seen training object with unseen lighting, and the input images of are rendered with unseen lighting under unseen camera poses
@@ -2154,8 +2390,8 @@ def main(args):
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        tracker_project_name = resolve_wandb_project_name(args)
-        tracker_run_name = build_wandb_run_name(args)
+        tracker_project_name = tracker_project_name or resolve_wandb_project_name(args)
+        tracker_run_name = tracker_run_name or build_wandb_run_name(args)
         wandb_resume_id = getattr(args, "wandb_resume_id", None) or os.environ.get("WANDB_RUN_ID")
         wandb_resume_mode = getattr(args, "wandb_resume_mode", None) or os.environ.get("WANDB_RESUME")
         tracker_config["tracker_project_name"] = tracker_project_name
@@ -2272,11 +2508,16 @@ def main(args):
                 relighting_image_group2 = batch["image_another_target"].to(dtype=weight_dtype)
                 foreground_mask_group1 = batch["foreground_mask_target"].to(dtype=weight_dtype)
                 foreground_mask_group2 = batch["foreground_mask_another_target"].to(dtype=weight_dtype)
+                random_lighting_condition_group = batch["is_random_lighting_condition"].to(dtype=weight_dtype)
                 pose = batch["T"].to(dtype=weight_dtype)
                 pose = torch.cat([pose, pose], dim=0)
                 input_image = torch.cat((input_image, input_image), dim=0)
                 gt_image = torch.cat((relighting_image_group1, relighting_image_group2), dim=0)
                 gt_foreground_mask = torch.cat((foreground_mask_group1, foreground_mask_group2), dim=0)
+                random_lighting_condition_mask = torch.cat(
+                    (random_lighting_condition_group, random_lighting_condition_group),
+                    dim=0,
+                )
                 
                 # environment map target
                 target_envir_map_ldr_group1 = batch["envir_map_target_ldr"].to(dtype=weight_dtype)
@@ -2359,22 +2600,12 @@ def main(args):
                 # - 标准 diffusion 训练里最核心的逐像素噪声 MSE
                 # - 形状与 model_pred / target 相同
                 diffusion_per_pixel_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                latent_highlight_score, latent_highlight_mask, latent_foreground_mask = compute_highlight_score_map(
+                latent_highlight_score, latent_highlight_mask, latent_foreground_mask = compute_training_highlight_maps(
                     gt_image=gt_image,
                     latent_hw=diffusion_per_pixel_loss.shape[-2:],
-                    threshold=getattr(args, "highlight_threshold", 0.8),
-                    soft_weighting=getattr(args, "highlight_soft_weighting", False),
-                    gamma=getattr(args, "highlight_gamma", 2.0),
-                    background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                    use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
-                    highlight_quantile=getattr(args, "highlight_quantile", 0.95),
-                    min_threshold=getattr(args, "highlight_min_threshold", 0.6),
-                    max_threshold=getattr(args, "highlight_max_threshold", 0.95),
-                    quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
-                    relative_mode=getattr(args, "highlight_relative_mode", "none"),
-                    local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
-                    relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
-                    provided_foreground_mask=gt_foreground_mask,
+                    args=args,
+                    foreground_mask=gt_foreground_mask,
+                    random_condition_mask=random_lighting_condition_mask,
                 )
                 latent_highlight_score = latent_highlight_score.to(
                     device=diffusion_per_pixel_loss.device,
@@ -2406,6 +2637,24 @@ def main(args):
                     global_step=global_step,
                     warmup_steps=getattr(args, "image_space_constraint_warmup_steps", 0),
                 )
+                per_sample_highlight_loss_weight = torch.full(
+                    (diffusion_per_pixel_loss.shape[0],),
+                    float(effective_highlight_loss_weight),
+                    device=diffusion_per_pixel_loss.device,
+                    dtype=diffusion_per_pixel_loss.dtype,
+                )
+                random_lighting_highlight_scale = float(
+                    getattr(args, "random_lighting_highlight_loss_weight_scale", 1.0) or 1.0
+                )
+                if abs(random_lighting_highlight_scale - 1.0) > 1e-6:
+                    per_sample_highlight_loss_weight = per_sample_highlight_loss_weight * (
+                        1.0
+                        + (random_lighting_highlight_scale - 1.0)
+                        * random_lighting_condition_mask.to(
+                            device=diffusion_per_pixel_loss.device,
+                            dtype=diffusion_per_pixel_loss.dtype,
+                        )
+                    )
                 effective_latent_probe_loss_weight = get_warmup_scaled_weight(
                     getattr(args, "latent_highlight_probe_loss_weight", 0.05),
                     global_step=global_step,
@@ -2438,23 +2687,13 @@ def main(args):
                 if use_highlight_weighted_loss:
                     # 根据真实目标图生成一个与 latent 分辨率一致的空间权重图。
                     # 这样模型在学习噪声时，会对高光区域承担更大的误差惩罚。
-                    weight_map = compute_highlight_weight_map(
+                    weight_map = compute_training_highlight_weight_map(
                         gt_image=gt_image,
                         latent_hw=diffusion_per_pixel_loss.shape[-2:],
-                        threshold=getattr(args, "highlight_threshold", 0.8),
-                        extra_weight=effective_highlight_loss_weight,
-                        soft_weighting=getattr(args, "highlight_soft_weighting", False),
-                        gamma=getattr(args, "highlight_gamma", 2.0),
-                        background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                        use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
-                        highlight_quantile=getattr(args, "highlight_quantile", 0.95),
-                        min_threshold=getattr(args, "highlight_min_threshold", 0.6),
-                        max_threshold=getattr(args, "highlight_max_threshold", 0.95),
-                        quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
-                        relative_mode=getattr(args, "highlight_relative_mode", "none"),
-                        local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
-                        relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
-                        provided_foreground_mask=gt_foreground_mask,
+                        extra_weight=per_sample_highlight_loss_weight,
+                        args=args,
+                        foreground_mask=gt_foreground_mask,
+                        random_condition_mask=random_lighting_condition_mask,
                     ).to(device=diffusion_per_pixel_loss.device, dtype=diffusion_per_pixel_loss.dtype)
                     # weighted_loss: 每个位置的 loss 乘以空间权重
                     weighted_loss = diffusion_per_pixel_loss * weight_map
@@ -2518,49 +2757,33 @@ def main(args):
                         )
                         if tensor_is_finite(pred_x0_image):
                             image_per_pixel_loss = F.mse_loss(pred_x0_image.float(), gt_image.float(), reduction="none")
-                            image_weight_map = compute_highlight_weight_map(
+                            image_weight_map = compute_training_highlight_weight_map(
                                 gt_image=gt_image,
                                 latent_hw=image_per_pixel_loss.shape[-2:],
-                                threshold=getattr(args, "highlight_threshold", 0.8),
-                                extra_weight=effective_highlight_loss_weight,
-                                soft_weighting=getattr(args, "highlight_soft_weighting", False),
-                                gamma=getattr(args, "highlight_gamma", 2.0),
-                                background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                                use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
-                                highlight_quantile=getattr(args, "highlight_quantile", 0.95),
-                                min_threshold=getattr(args, "highlight_min_threshold", 0.6),
-                                max_threshold=getattr(args, "highlight_max_threshold", 0.95),
-                                quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
-                                relative_mode=getattr(args, "highlight_relative_mode", "none"),
-                                local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
-                                relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
-                                provided_foreground_mask=gt_foreground_mask,
+                                extra_weight=per_sample_highlight_loss_weight,
+                                args=args,
+                                foreground_mask=gt_foreground_mask,
+                                random_condition_mask=random_lighting_condition_mask,
                             ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
                             image_weighted_loss = image_per_pixel_loss * image_weight_map
                             image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
                             image_space_loss = image_weighted_loss.sum() / image_norm.clamp_min(1e-6)
 
-                            image_highlight_mask = compute_highlight_mask(
+                            _, image_highlight_mask, image_foreground_mask = compute_training_highlight_maps(
                                 gt_image=gt_image,
                                 latent_hw=image_per_pixel_loss.shape[-2:],
-                                threshold=getattr(args, "highlight_threshold", 0.8),
-                                background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                                use_quantile_threshold=getattr(args, "highlight_use_quantile_threshold", False),
-                                highlight_quantile=getattr(args, "highlight_quantile", 0.95),
-                                min_threshold=getattr(args, "highlight_min_threshold", 0.6),
-                                max_threshold=getattr(args, "highlight_max_threshold", 0.95),
-                                quantile_blur_sigma=getattr(args, "highlight_quantile_blur_sigma", 0.0),
-                                relative_mode=getattr(args, "highlight_relative_mode", "none"),
-                                local_kernel_size=getattr(args, "highlight_local_kernel_size", 15),
-                                relative_eps=getattr(args, "highlight_relative_eps", 1e-4),
-                                provided_foreground_mask=gt_foreground_mask,
-                            ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
-                            image_foreground_mask = compute_foreground_mask(
-                                gt_image=gt_image,
-                                latent_hw=image_per_pixel_loss.shape[-2:],
-                                background_threshold=getattr(args, "foreground_background_threshold", 0.98),
-                                provided_foreground_mask=gt_foreground_mask,
-                            ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
+                                args=args,
+                                foreground_mask=gt_foreground_mask,
+                                random_condition_mask=random_lighting_condition_mask,
+                            )
+                            image_highlight_mask = image_highlight_mask.to(
+                                device=image_per_pixel_loss.device,
+                                dtype=image_per_pixel_loss.dtype,
+                            )
+                            image_foreground_mask = image_foreground_mask.to(
+                                device=image_per_pixel_loss.device,
+                                dtype=image_per_pixel_loss.dtype,
+                            )
                             active_highlight_metric_tensors = summarize_highlight_loss_metrics(
                                 image_per_pixel_loss,
                                 image_highlight_mask,
@@ -2634,6 +2857,10 @@ def main(args):
                                 warmup_steps=getattr(args, "image_space_constraint_warmup_steps", 0),
                             ),
                             "highlight/effective_loss_weight": effective_highlight_loss_weight,
+                            "highlight/effective_loss_weight_random_mean": accelerator.reduce(
+                                per_sample_highlight_loss_weight.detach().mean(),
+                                reduction="mean",
+                            ).item(),
                             "image_space/constraint_warmup_scale": linear_warmup_scale(
                                 global_step,
                                 getattr(args, "image_space_constraint_warmup_steps", 0),
@@ -2641,6 +2868,14 @@ def main(args):
                             "highlight/loss_weight_warmup_scale": linear_warmup_scale(
                                 global_step,
                                 getattr(args, "highlight_loss_weight_warmup_steps", 0),
+                            ),
+                            "random_lighting/sample_ratio": accelerator.reduce(
+                                random_lighting_condition_mask.detach().mean(),
+                                reduction="mean",
+                            ).item(),
+                            "random_lighting/highlight_loss_weight_scale": random_lighting_highlight_scale,
+                            "random_lighting/highlight_dilate_kernel_size": int(
+                                getattr(args, "random_lighting_highlight_dilate_kernel_size", 1)
                             ),
                             "train_guard/image_space_aux_skipped": int(image_space_aux_skipped),
                             "train_guard/image_space_scheduled_off": int(
@@ -2920,15 +3155,36 @@ def main(args):
 
                     validation_score, validation_metric_keys = extract_validation_psnr_score(step_log)
                     validation_pred_mean = extract_validation_pred_mean(step_log)
+                    random_area_light_psnr = extract_random_area_light_psnr(step_log)
                     if validation_score is not None:
                         step_log["train_guard/heldout_mean_psnr"] = validation_score
                     if validation_pred_mean is not None:
                         step_log["train_guard/heldout_min_pred_mean"] = validation_pred_mean
+                    if random_area_light_psnr is not None:
+                        step_log["train_guard/random_area_light_psnr"] = random_area_light_psnr
 
                     best_checkpoint_until_step = getattr(args, "best_checkpoint_until_step", 72000)
+                    best_checkpoint_random_area_light_psnr_floor = getattr(
+                        args,
+                        "best_checkpoint_random_area_light_psnr_floor",
+                        None,
+                    )
+                    best_checkpoint_floor_passed = True
+                    if best_checkpoint_random_area_light_psnr_floor is not None:
+                        best_checkpoint_floor_passed = (
+                            random_area_light_psnr is not None
+                            and random_area_light_psnr >= float(best_checkpoint_random_area_light_psnr_floor)
+                        )
+                        step_log["train_guard/best_random_area_light_psnr_floor"] = float(
+                            best_checkpoint_random_area_light_psnr_floor
+                        )
+                        step_log["train_guard/best_random_area_light_psnr_floor_passed"] = int(
+                            best_checkpoint_floor_passed
+                        )
                     if (
                         validation_score is not None
                         and global_step <= best_checkpoint_until_step
+                        and best_checkpoint_floor_passed
                         and validation_score > best_pre72k_score
                     ):
                         best_pre72k_score = validation_score
