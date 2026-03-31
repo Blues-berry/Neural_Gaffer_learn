@@ -142,6 +142,12 @@ def parse_args(input_args=None):
             "Using a checkpoint for inference requires separate loading of the original pipeline and the individual checkpointed model components."
         ),
     )
+    parser.add_argument(
+        "--save_only_best_checkpoint",
+        type=parse_bool,
+        default=True,
+        help="When enabled, skip periodic checkpoint-* saves and only keep the dedicated best-validation checkpoint plus the final exported pipeline.",
+    )
 
     parser.add_argument(
         "--checkpoints_total_limit",
@@ -574,6 +580,56 @@ def parse_args(input_args=None):
         type=int,
         default=1,
         help="Optional odd dilation kernel size applied to highlight score/mask maps for random area-light condition samples. Values <= 1 disable the relaxation.",
+    )
+    parser.add_argument(
+        "--use_frequency_separation_auxiliary_loss",
+        type=lambda x: str(x).lower() in ("1", "true", "yes", "y", "on"),
+        default=False,
+        help="Enable an additional standalone low/high-frequency image-space auxiliary loss. This does not change the existing highlight-definition module; it reuses its foreground/highlight maps.",
+    )
+    parser.add_argument(
+        "--frequency_low_loss_weight",
+        type=float,
+        default=0.05,
+        help="Weight of the low-frequency reconstruction term applied to Gaussian-blurred predictions and targets.",
+    )
+    parser.add_argument(
+        "--frequency_high_loss_weight",
+        type=float,
+        default=0.05,
+        help="Weight of the high-frequency residual reconstruction term. The residual loss reuses the existing highlight-weight map.",
+    )
+    parser.add_argument(
+        "--frequency_loss_warmup_steps",
+        type=int,
+        default=0,
+        help="Linear warmup steps shared by the low/high-frequency auxiliary loss weights.",
+    )
+    parser.add_argument(
+        "--frequency_blur_sigma",
+        type=float,
+        default=1.5,
+        help="Gaussian blur sigma used by the frequency-separation auxiliary loss to define low/high-frequency components.",
+    )
+    parser.add_argument(
+        "--frequency_blur_kernel_size",
+        type=int,
+        default=0,
+        help="Optional odd kernel size for the frequency-separation Gaussian blur. Values <= 1 auto-derive the kernel from sigma.",
+    )
+    parser.add_argument(
+        "--frequency_low_loss_type",
+        type=str,
+        default="l1",
+        choices=["l1", "l2"],
+        help="Pointwise loss used for the low-frequency reconstruction term.",
+    )
+    parser.add_argument(
+        "--frequency_high_loss_type",
+        type=str,
+        default="l1",
+        choices=["l1", "l2"],
+        help="Pointwise loss used for the high-frequency residual reconstruction term.",
     )
 
     parser.add_argument(

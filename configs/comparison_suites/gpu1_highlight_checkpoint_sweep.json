@@ -1,0 +1,44 @@
+{
+  "methods": [
+    {
+      "name": "10k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-10000/model.safetensors"
+    },
+    {
+      "name": "74k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-74000/model.safetensors"
+    },
+    {
+      "name": "75k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-75000/model.safetensors"
+    },
+    {
+      "name": "76k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-76000/model.safetensors"
+    },
+    {
+      "name": "77k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-77000/model.safetensors"
+    },
+    {
+      "name": "78k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-78000/model.safetensors"
+    },
+    {
+      "name": "79k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-79000/model.safetensors"
+    },
+    {
+      "name": "80k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
+    }
+  ]
+}

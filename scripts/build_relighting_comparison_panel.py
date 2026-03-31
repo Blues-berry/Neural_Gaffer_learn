@@ -45,6 +45,15 @@ def load_font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 
+def fit_font(text: str, max_width: int, start_size: int, min_size: int = 14, bold: bool = False):
+    for size in range(start_size, min_size - 1, -1):
+        font = load_font(size, bold=bold)
+        bbox = font.getbbox(text)
+        if (bbox[2] - bbox[0]) <= max_width - 8:
+            return font
+    return load_font(min_size, bold=bold)
+
+
 def centered_text(draw: ImageDraw.ImageDraw, box, text, font, fill):
     left, top, right, bottom = box
     bbox = draw.textbbox((0, 0), text, font=font)
@@ -86,11 +95,11 @@ def main():
 
     canvas = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(canvas)
-    header_font = load_font(28, bold=False)
     row_font = load_font(18, bold=False)
 
     x = left_margin
     for col_name in columns:
+        header_font = fit_font(col_name, tile_w, start_size=28, min_size=16, bold=False)
         centered_text(draw, (x, top_margin, x + tile_w, top_margin + args.header_height - 16), col_name, header_font, (24, 24, 28))
         x += tile_w + args.padding
 

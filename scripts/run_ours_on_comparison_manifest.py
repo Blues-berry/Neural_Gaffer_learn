@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torchvision
 from PIL import Image
-from safetensors.torch import load_file
+from safetensors.torch import load_model
 from torchvision import transforms
 
 from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
@@ -78,6 +78,15 @@ def expand_unet_conv_in(unet: UNet2DConditionModel):
     return unet
 
 
+def ensure_unet_input_channels(unet: UNet2DConditionModel):
+    if getattr(unet.config, "in_channels", None) == 16:
+        return unet
+    if getattr(unet, "conv_in", None) is not None and getattr(unet.conv_in, "in_channels", None) == 16:
+        unet.config.in_channels = 16
+        return unet
+    return expand_unet_conv_in(unet)
+
+
 def resolve_unet_weights(model_dir: Path, checkpoint_path: str | None):
     if checkpoint_path:
         return Path(checkpoint_path)
@@ -107,7 +116,7 @@ def load_pipeline(
     print(f"[load_pipeline] device={device} dtype={torch_dtype}", flush=True)
 
     local_unet_config = model_dir / "unet" / "config.json"
-    if local_unet_config.exists():
+    if checkpoint_path is None and local_unet_config.exists():
         local_config_data = json.loads(local_unet_config.read_text(encoding="utf-8"))
         if local_config_data.get("in_channels") == 16:
             print("[load_pipeline] using local exported pipeline", flush=True)
@@ -148,27 +157,28 @@ def load_pipeline(
         subfolder="vae",
         revision=revision,
     )
-    base_unet_config_dir = None
-    if Path(pretrained_model_name_or_path).exists():
-        base_unet_config_dir = Path(pretrained_model_name_or_path) / "unet"
+    unet_config_dir = None
+    if local_unet_config.exists():
+        unet_config_dir = model_dir / "unet"
+    elif Path(pretrained_model_name_or_path).exists():
+        unet_config_dir = Path(pretrained_model_name_or_path) / "unet"
     else:
         candidate = Path("/4T/huggingface_cache/models--kxic--zero123-xl/snapshots/7d8aec2223b93e84eb26893d1e732e013523474b/unet")
         if candidate.exists() and pretrained_model_name_or_path == "kxic/zero123-xl":
-            base_unet_config_dir = candidate
-    if base_unet_config_dir is None or not (base_unet_config_dir / "config.json").exists():
+            unet_config_dir = candidate
+    if unet_config_dir is None or not (unet_config_dir / "config.json").exists():
         raise FileNotFoundError(
             f"Could not resolve local base UNet config for {pretrained_model_name_or_path}. "
             "Pass a local path via --pretrained-model-name-or-path."
         )
-    unet_config = json.loads((base_unet_config_dir / "config.json").read_text(encoding="utf-8"))
+    unet_config = json.loads((unet_config_dir / "config.json").read_text(encoding="utf-8"))
     unet = UNet2DConditionModel.from_config(unet_config)
-    print(f"[load_pipeline] base unet instantiated from config {base_unet_config_dir}", flush=True)
-    unet = expand_unet_conv_in(unet)
+    print(f"[load_pipeline] base unet instantiated from config {unet_config_dir}", flush=True)
+    unet = ensure_unet_input_channels(unet)
 
     weights_path = resolve_unet_weights(model_dir, checkpoint_path)
     print(f"[load_pipeline] weights_path={weights_path}", flush=True)
-    state_dict = load_file(str(weights_path), device="cpu")
-    missing_keys, unexpected_keys = unet.load_state_dict(state_dict, strict=False)
+    missing_keys, unexpected_keys = load_model(unet, str(weights_path), strict=False, device="cpu")
     if missing_keys or unexpected_keys:
         raise RuntimeError(
             f"UNet weights mismatch for {weights_path}. Missing={missing_keys[:8]} Unexpected={unexpected_keys[:8]}"

@@ -1,0 +1,24 @@
+{
+  "methods": [
+    {
+      "name": "10k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/gpu1_highlight_10k/model.safetensors"
+    },
+    {
+      "name": "7cn19b1e",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/baseline_7cn19b1e/model.safetensors"
+    },
+    {
+      "name": "0316-80k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/ng0316_80k/model.safetensors"
+    },
+    {
+      "name": "change1-20k",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/change1_20k/model.safetensors"
+    }
+  ]
+}

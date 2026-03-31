@@ -37,6 +37,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from pipeline_neural_gaffer import Neural_Gaffer_StableDiffusionPipeline
+from frequency_separation_auxiliary import FrequencySeparationAuxiliaryLoss
 
 from diffusers.optimization import get_scheduler
 from diffusers.utils import is_wandb_available
@@ -1788,6 +1789,17 @@ def build_wandb_run_name(args) -> str:
             parts.append(f"lph{latent_highlight_probe_hidden_channels}")
         if getattr(args, "latent_highlight_probe_detach_input", False):
             parts.append("lpsg")
+    if getattr(args, "use_frequency_separation_auxiliary_loss", False):
+        parts.append("freq")
+        parts.append(
+            f"fl{_format_run_float_token(getattr(args, 'frequency_low_loss_weight', 0.05), scale=100)}"
+        )
+        parts.append(
+            f"fh{_format_run_float_token(getattr(args, 'frequency_high_loss_weight', 0.05), scale=100)}"
+        )
+        parts.append(
+            f"fs{_format_run_float_token(getattr(args, 'frequency_blur_sigma', 1.5), scale=10)}"
+        )
     if image_space_constraint_warmup_steps > 0 or highlight_loss_weight_warmup_steps > 0:
         if image_space_constraint_warmup_steps == highlight_loss_weight_warmup_steps:
             parts.append(f"wu{int(image_space_constraint_warmup_steps / 1000)}k")
@@ -1909,6 +1921,7 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet", **loading_kwargs)
     use_latent_highlight_probe = getattr(args, "use_latent_highlight_probe", False)
     latent_highlight_probe = None
+    frequency_separation_auxiliary = FrequencySeparationAuxiliaryLoss()
     
     
     vae.train()
@@ -2039,9 +2052,16 @@ def main(args):
         raise ValueError("hybrid_probe_final_image_space_scale must be non-negative.")
     if float(getattr(args, "hybrid_probe_final_probe_scale", 2.0) or 2.0) < 0.0:
         raise ValueError("hybrid_probe_final_probe_scale must be non-negative.")
+    if float(getattr(args, "frequency_low_loss_weight", 0.05) or 0.0) < 0.0:
+        raise ValueError("frequency_low_loss_weight must be non-negative.")
+    if float(getattr(args, "frequency_high_loss_weight", 0.05) or 0.0) < 0.0:
+        raise ValueError("frequency_high_loss_weight must be non-negative.")
+    if float(getattr(args, "frequency_blur_sigma", 1.5) or 0.0) < 0.0:
+        raise ValueError("frequency_blur_sigma must be non-negative.")
     use_image_space_highlight_loss = (
         requested_image_space_highlight_loss and not replace_image_space_highlight_loss_with_latent_probe
     )
+    use_frequency_separation_auxiliary_loss = getattr(args, "use_frequency_separation_auxiliary_loss", False)
     if use_highlight_weighted_loss:
         logger.info(
             "Latent/noise-space highlight-weighted diffusion loss enabled with weight=%s warmup_steps=%s threshold=%s soft=%s gamma=%s quantile=%s q=%s min_t=%s max_t=%s blur_sigma=%s relative_mode=%s local_kernel=%s relative_eps=%s",
@@ -2088,6 +2108,29 @@ def main(args):
         )
     else:
         logger.info("Image-space highlight constraint disabled")
+    if use_frequency_separation_auxiliary_loss:
+        logger.info(
+            "Frequency-separation auxiliary loss enabled with low_weight=%s high_weight=%s warmup_steps=%s blur_sigma=%s blur_kernel=%s low_loss_type=%s high_loss_type=%s",
+            getattr(args, "frequency_low_loss_weight", 0.05),
+            getattr(args, "frequency_high_loss_weight", 0.05),
+            getattr(args, "frequency_loss_warmup_steps", 0),
+            getattr(args, "frequency_blur_sigma", 1.5),
+            getattr(args, "frequency_blur_kernel_size", 0),
+            getattr(args, "frequency_low_loss_type", "l1"),
+            getattr(args, "frequency_high_loss_type", "l1"),
+        )
+    else:
+        logger.info("Frequency-separation auxiliary loss disabled")
+    if getattr(args, "save_only_best_checkpoint", True):
+        logger.info(
+            "Periodic checkpoint-* saves disabled. This run will keep only the dedicated best-validation checkpoint and the final exported pipeline."
+        )
+    else:
+        logger.info(
+            "Periodic checkpoint-* saves enabled every %s steps with checkpoints_total_limit=%s.",
+            getattr(args, "checkpointing_steps", None),
+            getattr(args, "checkpoints_total_limit", None),
+        )
     if use_latent_highlight_probe:
         logger.info(
             "Latent-space highlight probe enabled with loss_weight=%s warmup_steps=%s hidden_channels=%s detach_input=%s replace_image_space=%s",
@@ -2660,6 +2703,16 @@ def main(args):
                     global_step=global_step,
                     warmup_steps=getattr(args, "latent_highlight_probe_warmup_steps", 0),
                 )
+                effective_frequency_low_loss_weight = get_warmup_scaled_weight(
+                    getattr(args, "frequency_low_loss_weight", 0.05),
+                    global_step=global_step,
+                    warmup_steps=getattr(args, "frequency_loss_warmup_steps", 0),
+                )
+                effective_frequency_high_loss_weight = get_warmup_scaled_weight(
+                    getattr(args, "frequency_high_loss_weight", 0.05),
+                    global_step=global_step,
+                    warmup_steps=getattr(args, "frequency_loss_warmup_steps", 0),
+                )
                 hybrid_transition_progress = 0.0
                 hybrid_image_space_scale = 1.0
                 hybrid_probe_scale = 1.0
@@ -2681,6 +2734,10 @@ def main(args):
                     effective_latent_probe_loss_weight *= hybrid_probe_scale
                 run_image_space_highlight_loss = (
                     use_image_space_highlight_loss and effective_image_space_constraint_weight > 0.0
+                )
+                run_frequency_separation_auxiliary_loss = (
+                    use_frequency_separation_auxiliary_loss
+                    and (effective_frequency_low_loss_weight > 0.0 or effective_frequency_high_loss_weight > 0.0)
                 )
 
                 weight_map = None
@@ -2706,12 +2763,24 @@ def main(args):
 
                 image_space_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
                 latent_probe_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
+                frequency_auxiliary_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
+                frequency_low_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
+                frequency_high_loss = torch.zeros((), device=diffusion_loss.device, dtype=diffusion_loss.dtype)
+                frequency_aux_skipped = False
+                frequency_aux_metric_tensors = None
                 image_weight_map = None
+                image_foreground_mask = None
+                image_highlight_mask = None
+                pred_x0_image = None
                 active_highlight_metric_tensors = latent_highlight_metric_tensors
                 highlight_logs_prefix = ""
                 latent_probe_metric_tensors = None
                 pred_x0_latents = None
-                need_pred_x0_latents = run_image_space_highlight_loss or use_latent_highlight_probe
+                need_pred_x0_latents = (
+                    run_image_space_highlight_loss
+                    or use_latent_highlight_probe
+                    or run_frequency_separation_auxiliary_loss
+                )
 
                 if need_pred_x0_latents:
                     pred_x0_latents = predict_x0_from_model_pred(
@@ -2748,69 +2817,112 @@ def main(args):
                             step,
                         )
 
-                if run_image_space_highlight_loss:
+                need_decoded_pred_x0_image = run_image_space_highlight_loss or run_frequency_separation_auxiliary_loss
+                if need_decoded_pred_x0_image:
                     if pred_x0_latents is not None and tensor_is_finite(pred_x0_latents):
                         pred_x0_image = decode_latents_to_image(
                             vae,
                             pred_x0_latents,
                             output_dtype=gt_image.dtype,
                         )
-                        if tensor_is_finite(pred_x0_image):
-                            image_per_pixel_loss = F.mse_loss(pred_x0_image.float(), gt_image.float(), reduction="none")
-                            image_weight_map = compute_training_highlight_weight_map(
-                                gt_image=gt_image,
-                                latent_hw=image_per_pixel_loss.shape[-2:],
-                                extra_weight=per_sample_highlight_loss_weight,
-                                args=args,
-                                foreground_mask=gt_foreground_mask,
-                                random_condition_mask=random_lighting_condition_mask,
-                            ).to(device=image_per_pixel_loss.device, dtype=image_per_pixel_loss.dtype)
-                            image_weighted_loss = image_per_pixel_loss * image_weight_map
-                            image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
-                            image_space_loss = image_weighted_loss.sum() / image_norm.clamp_min(1e-6)
-
-                            _, image_highlight_mask, image_foreground_mask = compute_training_highlight_maps(
-                                gt_image=gt_image,
-                                latent_hw=image_per_pixel_loss.shape[-2:],
-                                args=args,
-                                foreground_mask=gt_foreground_mask,
-                                random_condition_mask=random_lighting_condition_mask,
-                            )
-                            image_highlight_mask = image_highlight_mask.to(
-                                device=image_per_pixel_loss.device,
-                                dtype=image_per_pixel_loss.dtype,
-                            )
-                            image_foreground_mask = image_foreground_mask.to(
-                                device=image_per_pixel_loss.device,
-                                dtype=image_per_pixel_loss.dtype,
-                            )
-                            active_highlight_metric_tensors = summarize_highlight_loss_metrics(
-                                image_per_pixel_loss,
-                                image_highlight_mask,
-                                valid_mask=image_foreground_mask,
-                            )
-                            highlight_logs_prefix = "image_space/"
-                        else:
-                            image_space_aux_skipped = True
+                        if not tensor_is_finite(pred_x0_image):
+                            pred_x0_image = None
+                            image_space_aux_skipped = image_space_aux_skipped or run_image_space_highlight_loss
+                            frequency_aux_skipped = frequency_aux_skipped or run_frequency_separation_auxiliary_loss
                             logger.warning(
-                                "Skipping image-space auxiliary loss at global_step=%s epoch=%s batch_step=%s because decoded pred_x0 image is non-finite.",
+                                "Skipping decoded-image auxiliaries at global_step=%s epoch=%s batch_step=%s because decoded pred_x0 image is non-finite.",
                                 global_step,
                                 epoch,
                                 step,
                             )
                     else:
-                        image_space_aux_skipped = True
+                        image_space_aux_skipped = image_space_aux_skipped or run_image_space_highlight_loss
+                        frequency_aux_skipped = frequency_aux_skipped or run_frequency_separation_auxiliary_loss
                         logger.warning(
-                            "Skipping image-space auxiliary loss at global_step=%s epoch=%s batch_step=%s because pred_x0 latents are non-finite.",
+                            "Skipping decoded-image auxiliaries at global_step=%s epoch=%s batch_step=%s because pred_x0 latents are non-finite.",
                             global_step,
                             epoch,
                             step,
                         )
 
+                if pred_x0_image is not None:
+                    image_output_hw = pred_x0_image.shape[-2:]
+                    if run_image_space_highlight_loss or run_frequency_separation_auxiliary_loss:
+                        image_weight_map = compute_training_highlight_weight_map(
+                            gt_image=gt_image,
+                            latent_hw=image_output_hw,
+                            extra_weight=per_sample_highlight_loss_weight,
+                            args=args,
+                            foreground_mask=gt_foreground_mask,
+                            random_condition_mask=random_lighting_condition_mask,
+                        ).to(device=pred_x0_image.device, dtype=pred_x0_image.dtype)
+                        _, image_highlight_mask, image_foreground_mask = compute_training_highlight_maps(
+                            gt_image=gt_image,
+                            latent_hw=image_output_hw,
+                            args=args,
+                            foreground_mask=gt_foreground_mask,
+                            random_condition_mask=random_lighting_condition_mask,
+                        )
+                        image_highlight_mask = image_highlight_mask.to(
+                            device=pred_x0_image.device,
+                            dtype=pred_x0_image.dtype,
+                        )
+                        image_foreground_mask = image_foreground_mask.to(
+                            device=pred_x0_image.device,
+                            dtype=pred_x0_image.dtype,
+                        )
+
+                    if run_image_space_highlight_loss:
+                        image_per_pixel_loss = F.mse_loss(pred_x0_image.float(), gt_image.float(), reduction="none")
+                        image_weighted_loss = image_per_pixel_loss * image_weight_map
+                        image_norm = image_weight_map.sum() * image_per_pixel_loss.shape[1]
+                        image_space_loss = image_weighted_loss.sum() / image_norm.clamp_min(1e-6)
+                        active_highlight_metric_tensors = summarize_highlight_loss_metrics(
+                            image_per_pixel_loss,
+                            image_highlight_mask,
+                            valid_mask=image_foreground_mask,
+                        )
+                        highlight_logs_prefix = "image_space/"
+
+                    if run_frequency_separation_auxiliary_loss:
+                        frequency_aux_output = frequency_separation_auxiliary(
+                            pred_x0_image.float(),
+                            gt_image.float(),
+                            foreground_mask=image_foreground_mask,
+                            highlight_weight_map=image_weight_map,
+                            blur_sigma=getattr(args, "frequency_blur_sigma", 1.5),
+                            blur_kernel_size=getattr(args, "frequency_blur_kernel_size", 0),
+                            low_loss_weight=effective_frequency_low_loss_weight,
+                            high_loss_weight=effective_frequency_high_loss_weight,
+                            low_loss_type=getattr(args, "frequency_low_loss_type", "l1"),
+                            high_loss_type=getattr(args, "frequency_high_loss_type", "l1"),
+                        )
+                        frequency_auxiliary_loss = frequency_aux_output.total_loss.to(
+                            device=diffusion_loss.device,
+                            dtype=diffusion_loss.dtype,
+                        )
+                        frequency_low_loss = frequency_aux_output.low_frequency_loss.to(
+                            device=diffusion_loss.device,
+                            dtype=diffusion_loss.dtype,
+                        )
+                        frequency_high_loss = frequency_aux_output.high_frequency_loss.to(
+                            device=diffusion_loss.device,
+                            dtype=diffusion_loss.dtype,
+                        )
+                        frequency_aux_metric_tensors = {
+                            "low_loss": frequency_aux_output.low_frequency_loss.detach(),
+                            "high_loss": frequency_aux_output.high_frequency_loss.detach(),
+                            "pred_low_abs_mean": frequency_aux_output.pred_low_abs_mean.detach(),
+                            "gt_low_abs_mean": frequency_aux_output.gt_low_abs_mean.detach(),
+                            "pred_high_abs_mean": frequency_aux_output.pred_high_abs_mean.detach(),
+                            "gt_high_abs_mean": frequency_aux_output.gt_high_abs_mean.detach(),
+                        }
+
                 loss = (
                     diffusion_loss
                     + effective_image_space_constraint_weight * image_space_loss
                     + effective_latent_probe_loss_weight * latent_probe_loss
+                    + frequency_auxiliary_loss
                 )
 
                 if not tensor_is_finite(model_pred):
@@ -2825,6 +2937,15 @@ def main(args):
                 elif not tensor_is_finite(latent_probe_loss):
                     skipped_update = True
                     skip_reason = "non_finite_latent_probe_loss"
+                elif not tensor_is_finite(frequency_low_loss):
+                    skipped_update = True
+                    skip_reason = "non_finite_frequency_low_loss"
+                elif not tensor_is_finite(frequency_high_loss):
+                    skipped_update = True
+                    skip_reason = "non_finite_frequency_high_loss"
+                elif not tensor_is_finite(frequency_auxiliary_loss):
+                    skipped_update = True
+                    skip_reason = "non_finite_frequency_auxiliary_loss"
                 elif not tensor_is_finite(loss):
                     skipped_update = True
                     skip_reason = "non_finite_total_loss"
@@ -2850,11 +2971,29 @@ def main(args):
                                 (effective_image_space_constraint_weight * image_space_loss).detach(),
                                 reduction="mean",
                             ).item(),
+                            "loss_frequency_auxiliary": accelerator.reduce(
+                                frequency_auxiliary_loss.detach(),
+                                reduction="mean",
+                            ).item(),
+                            "loss_frequency_low": accelerator.reduce(
+                                frequency_low_loss.detach(),
+                                reduction="mean",
+                            ).item(),
+                            "loss_frequency_high": accelerator.reduce(
+                                frequency_high_loss.detach(),
+                                reduction="mean",
+                            ).item(),
                             "image_space/effective_constraint_weight": effective_image_space_constraint_weight,
                             "image_space/base_constraint_weight": get_warmup_scaled_weight(
                                 getattr(args, "image_space_constraint_weight", 0.1),
                                 global_step=global_step,
                                 warmup_steps=getattr(args, "image_space_constraint_warmup_steps", 0),
+                            ),
+                            "frequency/effective_low_loss_weight": effective_frequency_low_loss_weight,
+                            "frequency/effective_high_loss_weight": effective_frequency_high_loss_weight,
+                            "frequency/loss_warmup_scale": linear_warmup_scale(
+                                global_step,
+                                getattr(args, "frequency_loss_warmup_steps", 0),
                             ),
                             "highlight/effective_loss_weight": effective_highlight_loss_weight,
                             "highlight/effective_loss_weight_random_mean": accelerator.reduce(
@@ -2878,6 +3017,7 @@ def main(args):
                                 getattr(args, "random_lighting_highlight_dilate_kernel_size", 1)
                             ),
                             "train_guard/image_space_aux_skipped": int(image_space_aux_skipped),
+                            "train_guard/frequency_aux_skipped": int(frequency_aux_skipped),
                             "train_guard/image_space_scheduled_off": int(
                                 use_image_space_highlight_loss and not run_image_space_highlight_loss
                             ),
@@ -2930,6 +3070,13 @@ def main(args):
                             {
                                 f"latent_probe/{key}": accelerator.reduce(value.detach(), reduction="mean").item()
                                 for key, value in latent_probe_metric_tensors.items()
+                            }
+                        )
+                    if frequency_aux_metric_tensors is not None:
+                        highlight_logs.update(
+                            {
+                                f"frequency/{key}": accelerator.reduce(value.detach(), reduction="mean").item()
+                                for key, value in frequency_aux_metric_tensors.items()
                             }
                         )
                     sanitized_highlight_logs, skipped_highlight_logs = sanitize_log_dict(highlight_logs)
@@ -3013,7 +3160,10 @@ def main(args):
                     step_log = {}
                     checkpoint_saved_this_step = None
                     
-                    if global_step % args.checkpointing_steps == 0:
+                    if (
+                        not getattr(args, "save_only_best_checkpoint", True)
+                        and global_step % args.checkpointing_steps == 0
+                    ):
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)

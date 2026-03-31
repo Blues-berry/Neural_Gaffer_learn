@@ -57,14 +57,15 @@ def parse_method_roots(items):
 
 
 def load_mask(object_dir: Path, view_idx: int, gt_path: Path, background_threshold: float):
-    mask, _ = resolve_foreground_mask(str(object_dir), view_idx=view_idx, reference_image_path=str(gt_path))
+    mask, mask_source = resolve_foreground_mask(str(object_dir), view_idx=view_idx, reference_image_path=str(gt_path))
     if mask is None:
         rgb = load_image_array(str(gt_path))
         mask = fallback_white_background_mask(rgb, background_threshold=background_threshold)
+        mask_source = "fallback_white_background_mask"
     mask = np.asarray(mask, dtype=np.float32)
     if mask.ndim == 3:
         mask = mask[..., 0]
-    return np.clip(mask, 0.0, 1.0)
+    return np.clip(mask, 0.0, 1.0), mask_source
 
 
 def env_name_from_target_file(target_file: str):
@@ -414,16 +415,26 @@ def make_perspective_background(target_lighting_ldr: Image.Image, size):
     return Image.fromarray((bg * 255).astype(np.uint8), mode="RGB")
 
 
-def composite_on_background(image: Image.Image, background: Image.Image, mask: np.ndarray):
+def composite_on_background(image: Image.Image, background: Image.Image, mask: np.ndarray, aggressive_edge_cleanup: bool = False):
     image = image.convert("RGB").resize(background.size, Image.Resampling.BICUBIC)
     alpha_img = Image.fromarray((np.clip(mask, 0.0, 1.0) * 255).astype(np.uint8), mode="L").resize(
         background.size, Image.Resampling.BILINEAR
     )
-    alpha_img = alpha_img.filter(ImageFilter.GaussianBlur(0.8))
+    if aggressive_edge_cleanup:
+        alpha_np = np.asarray(alpha_img, dtype=np.uint8)
+        hard_alpha = (alpha_np >= 192).astype(np.uint8) * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        hard_alpha = cv2.erode(hard_alpha, kernel, iterations=1)
+        alpha_img = Image.fromarray(hard_alpha, mode="L")
+        alpha_img = alpha_img.filter(ImageFilter.GaussianBlur(0.6))
+    else:
+        alpha_img = alpha_img.filter(ImageFilter.GaussianBlur(0.8))
 
     fg = np.asarray(image, dtype=np.float32) / 255.0
     bg = np.asarray(background.convert("RGB"), dtype=np.float32) / 255.0
     alpha = np.asarray(alpha_img, dtype=np.float32) / 255.0
+    if aggressive_edge_cleanup:
+        alpha = np.where(alpha < 0.025, 0.0, alpha)
     alpha = np.clip(alpha, 0.0, 1.0)[..., None]
 
     # Remove white-background contamination before compositing.
@@ -465,11 +476,17 @@ def main():
         input_image = Image.open(input_path).convert("RGB")
         gt_image = Image.open(gt_path).convert("RGB")
         target_ldr = Image.open(target_ldr_path).convert("RGB")
-        mask = load_mask(object_dir, sample["view_idx"], gt_path, args.foreground_background_threshold)
+        mask, mask_source = load_mask(object_dir, sample["view_idx"], gt_path, args.foreground_background_threshold)
+        use_aggressive_edge_cleanup = mask_source == "fallback_white_background_mask"
         proxy_bg = make_proxy_background(target_ldr, gt_image.size)
         projected_bg = make_perspective_background(target_ldr, gt_image.size)
         display_bg = make_display_background(target_ldr, gt_image.size, sample, object_dir)
-        gt_composite = composite_on_background(gt_image, display_bg, mask)
+        gt_composite = composite_on_background(
+            gt_image,
+            display_bg,
+            mask,
+            aggressive_edge_cleanup=use_aggressive_edge_cleanup,
+        )
 
         shutil.copy2(input_path, sample_dir / "input.png")
         shutil.copy2(gt_path, sample_dir / "ground_truth_white_bg.png")
@@ -487,6 +504,7 @@ def main():
         exported["target_lighting_export"] = str(sample_dir / "target_lighting.png")
         exported["background_export"] = str(sample_dir / "target_background.png")
         exported["background_projected_export"] = str(sample_dir / "target_background_projected.png")
+        exported["mask_source"] = mask_source
         exported["methods"] = {}
 
         for method_name, method_root in method_roots.items():
@@ -494,7 +512,12 @@ def main():
             if pred_path is None:
                 continue
             pred_image = Image.open(pred_path).convert("RGB")
-            composited = composite_on_background(pred_image, display_bg, mask)
+            composited = composite_on_background(
+                pred_image,
+                display_bg,
+                mask,
+                aggressive_edge_cleanup=use_aggressive_edge_cleanup,
+            )
             shutil.copy2(pred_path, sample_dir / f"{method_name}_white_bg.png")
             composited.save(sample_dir / f"{method_name}_composited.png")
             exported["methods"][method_name] = {
