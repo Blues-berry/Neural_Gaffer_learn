@@ -349,6 +349,14 @@ if __name__ == '__main__':
             target_envir_map_ldr.save(os.path.join(cur_save_dir, 'LDR', f'{frame_idx}.png'))
             target_envir_map_hdr.save(os.path.join(cur_save_dir, 'HDR_normalized', f'{frame_idx}.png'))
 
-        # save as video
-        import imageio; imageio.mimsave(os.path.join(cur_save_dir, 'background', f'{envir_map_name}.mp4'), cur_results, fps=30)
+        # Saving the preview mp4 is optional for our paper/demo pipelines.
+        # Some imageio plugin combinations on newer Python builds reject the fps
+        # keyword for mp4-like paths, while the actual relighting assets above are
+        # already written correctly. Keep the pipeline going instead of failing
+        # after the useful outputs are produced.
+        try:
+            import imageio
 
+            imageio.mimsave(os.path.join(cur_save_dir, 'background', f'{envir_map_name}.mp4'), cur_results, fps=30)
+        except Exception as exc:
+            print(f"[warn] skipping background preview video for {envir_map_name}: {exc}")

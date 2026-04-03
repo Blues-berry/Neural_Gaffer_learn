@@ -1,0 +1,6 @@
+output_dir = logs/neural_gaffer_training_fullall_allreadyval
+train_img_dir = /4T/CXY/Neural_Gaffer/logs/dataset_unions/full_current_original_official2000_ecommerce1000_3dfuture_landscape/images
+train_lighting_dir = /4T/CXY/Neural_Gaffer/logs/dataset_unions/full_current_original_official2000_ecommerce1000_3dfuture_landscape/lighting
+val_img_dir = /4T/CXY/Neural_Gaffer/logs/dataset_validation_unions/all_ready_20260329/images
+val_lighting_dir = /4T/CXY/Neural_Gaffer/logs/dataset_validation_unions/all_ready_20260329/lighting
+wandb_run_note = fullall_spuru_cosine_lowlr

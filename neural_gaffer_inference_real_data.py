@@ -104,6 +104,21 @@ def make_side_by_side_pil(left_pil: Image.Image, right_pil: Image.Image) -> Imag
     return canvas
 
 
+def image_array_to_pil(image_like) -> Image.Image:
+    array = np.asarray(image_like)
+    while array.ndim > 3 and array.shape[0] == 1:
+        array = array[0]
+    if array.ndim == 3 and array.shape[0] in (1, 3, 4) and array.shape[-1] not in (1, 3, 4):
+        array = np.transpose(array, (1, 2, 0))
+    if array.ndim == 3 and array.shape[-1] == 1:
+        array = array[..., 0]
+    if array.ndim not in (2, 3):
+        raise ValueError(f"Unsupported image array shape for PIL conversion: {array.shape}")
+    if array.dtype != np.uint8:
+        array = np.clip(array * 255.0, 0.0, 255.0).astype(np.uint8)
+    return Image.fromarray(array)
+
+
 def compute_foreground_mask_for_inference(image_bchw: torch.Tensor, background_threshold: float = 0.98) -> torch.Tensor:
     image_01 = (image_bchw.float() + 1.0) / 2.0
     return (image_01.amin(dim=1, keepdim=True) < background_threshold).float()
@@ -550,6 +565,7 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
             
     predicted_images = np.concatenate(predicted_images, axis=0) # [num_validation_batches * batch_size, h, w, 3]
     LDR_target_environment_maps = np.concatenate(LDR_target_environment_maps, axis=0) # [num_validation_batches * batch_size, h, w, 3]
+    HDR_target_environment_maps = np.concatenate(HDR_target_environment_maps, axis=0) # [num_validation_batches * batch_size, h, w, 3]
     input_images = np.concatenate(input_images, axis=0) # [num_validation_batches * batch_size, h, w, 3]
     
     
@@ -571,11 +587,11 @@ def log_validation(validation_dataloader, vae, image_encoder, feature_extractor,
         os.makedirs(f'{save_dir}/{cur_input_image_name}/target_envmap_hdr', exist_ok=True)
         os.makedirs(f'{save_dir}/{cur_input_image_name}/target_envmap_ldr', exist_ok=True)
         os.makedirs(f'{save_dir}/{cur_input_image_name}/pred_image', exist_ok=True)
-        input_image_PIL = Image.fromarray((np.squeeze(cur_input_image) * 255).astype(np.uint8))
+        input_image_PIL = image_array_to_pil(cur_input_image)
         cur_target_envmap_hdr = HDR_target_environment_maps[image_idx]
-        target_envmap_hdr_PIL = Image.fromarray((np.squeeze(cur_target_envmap_hdr) * 255).astype(np.uint8))
-        target_envmap_ldr_PIL = Image.fromarray((np.squeeze(cur_target_envmap_ldr) * 255).astype(np.uint8))
-        pred_image_PIL = Image.fromarray((np.squeeze(cur_predicted_image) * 255).astype(np.uint8))
+        target_envmap_hdr_PIL = image_array_to_pil(cur_target_envmap_hdr)
+        target_envmap_ldr_PIL = image_array_to_pil(cur_target_envmap_ldr)
+        pred_image_PIL = image_array_to_pil(cur_predicted_image)
 
         target_envmap_hdr_PIL.save(f'{save_dir}/{cur_input_image_name}/target_envmap_hdr/{cur_target_lighting_name}_{cur_target_view_idx:03d}.png')
         target_envmap_ldr_PIL.save(f'{save_dir}/{cur_input_image_name}/target_envmap_ldr/{cur_target_lighting_name}_{cur_target_view_idx:03d}.png')

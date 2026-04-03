@@ -161,13 +161,48 @@ def build_presets():
                 },
             ],
         },
+        "all_available": {
+            "output_dir": REPO_ROOT / "logs" / "dataset_unions" / "full_current_original_official2000_ecommerce1000_3dfuture_landscape",
+            "sources": [
+                {
+                    "name": "current_original",
+                    "img_dir": str(REPO_ROOT / "training_data" / "images" / "training_img_data_subset"),
+                    "lighting_dir": str(REPO_ROOT / "training_data" / "lighting" / "training_lighting_data_subset"),
+                    "list_path": None,
+                },
+                {
+                    "name": "official_2000",
+                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_official_2000",
+                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_official_2000",
+                    "list_path": str(READY_ROOT / "official_2000" / "filtered_objects.txt"),
+                },
+                {
+                    "name": "ecommerce_1000",
+                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset",
+                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset",
+                    "list_path": str(READY_ROOT / "ecommerce" / "filtered_objects.txt"),
+                },
+                {
+                    "name": "three_future",
+                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_three_future_standalone",
+                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_three_future_standalone",
+                    "list_path": str(READY_ROOT / "three_future" / "filtered_objects.txt"),
+                },
+                {
+                    "name": "landscape",
+                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_landscape_subset",
+                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_landscape_subset",
+                    "list_path": str(READY_ROOT / "landscape" / "filtered_objects.txt"),
+                },
+            ],
+        },
     }
     return presets
 
 
 def main():
     parser = argparse.ArgumentParser(description="Build union training datasets by linking multiple sources.")
-    parser.add_argument("--preset", type=str, default="main", choices=["main", "full"])
+    parser.add_argument("--preset", type=str, default="main", choices=["main", "full", "all_available"])
     parser.add_argument("--output_dir", type=str, default=None)
     args = parser.parse_args()
 

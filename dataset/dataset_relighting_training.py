@@ -22,6 +22,12 @@ import os
 from dataset.foreground_mask_utils import fallback_white_background_mask, resolve_foreground_mask
 
 
+def _safe_rank() -> int:
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    return 0
+
+
 class NeuralGafferTrainingDataLoader():
     def __init__(self, 
                  lighting_dir_train, img_dir_train,  
@@ -141,7 +147,7 @@ class NeuralGafferTrainingData(Dataset):
                 # self.paths = self.paths[math.floor(total_objects / 100. * 99.5):]  # used last 0.5% as validation
                 self.path_file_name = 'val_unseen_object_list.json'
             self.get_object_id() # assign value to self.paths
-            if torch.distributed.get_rank() == 0:
+            if _safe_rank() == 0:
                 print(f'========== view of validation dataset ({self.dataset_type}): {len(self.paths)} ==========' )
         else:
             # 训练集默认读 training_object_list.json。
@@ -150,7 +156,7 @@ class NeuralGafferTrainingData(Dataset):
             self.path_file_name = 'training_object_list.json'
             self.get_object_id() # assign value to self.paths
 
-            if torch.distributed.get_rank() == 0:
+            if _safe_rank() == 0:
                 print(f'========== view of training dataset ({self.dataset_type}): {len(self.paths)} ==========')
         
         self.light_area_weight, self.view_dirs = None, None
@@ -247,9 +253,8 @@ class NeuralGafferTrainingData(Dataset):
         # 如果提供 color，就把透明背景像素替换成指定颜色。
         try:
             img = plt.imread(path)
-        except:
-            print(path)
-            sys.exit()
+        except Exception as exc:
+            raise FileNotFoundError(f"Failed to read image: {path}") from exc
         if color is not None:
             img[img[:, :, -1] == 0.] = color
         
@@ -262,9 +267,8 @@ class NeuralGafferTrainingData(Dataset):
         '''
         try:
             img = plt.imread(img_path)
-        except:
-            print(img_path)
-            sys.exit()
+        except Exception as exc:
+            raise FileNotFoundError(f"Failed to read image: {img_path}") from exc
             
         mask = plt.imread(mask_path)[..., -1] # [H, W]
         img = img[:, :, :3] * mask[:, :, None] + np.array(color) * (1 - mask[:, :, None])
@@ -278,9 +282,8 @@ class NeuralGafferTrainingData(Dataset):
         '''
         try:
             img = plt.imread(img_path)
-        except:
-            print(img_path)
-            sys.exit()
+        except Exception as exc:
+            raise FileNotFoundError(f"Failed to read image: {img_path}") from exc
             
         img = img[:, :, :3] * mask[:, :, None] + np.array(color) * (1 - mask[:, :, None])
         img = Image.fromarray(np.uint8(img[:, :, :3] * 255.))
@@ -317,7 +320,7 @@ class NeuralGafferTrainingData(Dataset):
     
 
 
-    def __getitem__(self, index):
+    def _build_item(self, index):
         """
         返回一个训练样本。
 
@@ -488,6 +491,33 @@ class NeuralGafferTrainingData(Dataset):
         data["target_envir_map_name"] = target_envir_map_name
         
         return data
+
+    def __getitem__(self, index):
+        max_attempts = 32 if not self.validation else min(max(len(self.paths), 1), 8)
+        last_exc = None
+
+        for attempt in range(max_attempts):
+            candidate_index = index if attempt == 0 else (
+                (index + attempt) % len(self.paths) if self.validation else random.randrange(len(self.paths))
+            )
+            try:
+                return self._build_item(candidate_index)
+            except BaseException as exc:
+                last_exc = exc
+                candidate_object = None
+                if 0 <= candidate_index < len(self.paths):
+                    candidate_object = self.paths[candidate_index]
+                print(
+                    f"[dataset_relighting_training] skip invalid sample "
+                    f"(validation={self.validation}, attempt={attempt + 1}/{max_attempts}, "
+                    f"index={candidate_index}, object_id={candidate_object}): {exc}",
+                    flush=True,
+                )
+
+        raise RuntimeError(
+            f"Failed to fetch a valid sample after {max_attempts} attempts. "
+            f"Last error: {last_exc}"
+        )
 
     def process_im(self, im):
         # 统一把 PIL 图像变成训练使用的张量:

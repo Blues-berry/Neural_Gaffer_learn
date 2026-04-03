@@ -11,6 +11,39 @@ from PIL import Image
 from safetensors.torch import load_model
 from torchvision import transforms
 
+try:
+    import kornia.geometry.transform as kornia_transform
+    from kornia.geometry import pyrup as kornia_pyrup
+
+    if not hasattr(kornia_transform, "build_laplacian_pyramid"):
+        def _build_laplacian_pyramid(input_tensor: torch.Tensor, max_level: int):
+            if max_level <= 0:
+                raise ValueError(f"max_level must be positive, got {max_level}")
+
+            gaussian_pyramid = [input_tensor]
+            current = input_tensor
+            for _ in range(max_level - 1):
+                current = kornia_transform.pyrdown(current)
+                gaussian_pyramid.append(current)
+
+            laplacian_pyramid = []
+            for level in range(len(gaussian_pyramid) - 1):
+                expanded = kornia_pyrup(gaussian_pyramid[level + 1])
+                if expanded.shape[-2:] != gaussian_pyramid[level].shape[-2:]:
+                    expanded = torch.nn.functional.interpolate(
+                        expanded,
+                        size=gaussian_pyramid[level].shape[-2:],
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+                laplacian_pyramid.append(gaussian_pyramid[level] - expanded)
+            laplacian_pyramid.append(gaussian_pyramid[-1])
+            return laplacian_pyramid
+
+        kornia_transform.build_laplacian_pyramid = _build_laplacian_pyramid
+except Exception:
+    pass
+
 from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
 from transformers import CLIPVisionModelWithProjection
 

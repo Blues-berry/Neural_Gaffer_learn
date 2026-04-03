@@ -1,177 +1,82 @@
-# Neural Gaffer: Relighting Any Object via Diffusion (NeurIPS 2024)
+# Neural_Gaffer Workspace
 
-## [Project Page](https://neural-gaffer.github.io/) |  [Paper](https://arxiv.org/abs/2406.07520)
-Neural Gaffer is an end-to-end 2D relighting diffusion model that accurately **relights any object in a single image under various lighting conditions**.
-Moreover, by combining with other generative methods, our model enables many downstream 2D tasks, such as text-based relighting and object insertion. Our model can also operate as a strong relighting prior for 3D tasks, such as relighting a radiance field.
+本仓库已经不是单纯的上游开源代码镜像，而是一个持续演化的本地研究工作区。当前内容同时包含：
 
-https://github.com/Haian-Jin/Neural_Gaffer/assets/79512936/bc35ad6f-134e-4b83-8b4a-4daaae85a674
+- Neural Gaffer 主训练与推理代码
+- 高光监督/频域辅助等方法试验
+- 数据子集整理与质量检查脚本
+- 对比图导出、面板拼接与 checkpoint sweep 工具
+- 论文写作材料、图示与参考文献
 
-## 0. TODO List
-I'll be updating the following list. If you have any urgent requirements, such as needing to compare this method for an upcoming submission, please contact me via my email.
-- [x] Release the checkpoint and the inference script for in-the-wild single image input
-- [x] Release the training dataset for the diffusion model
-- [x] Release the training code for the diffusion model
-- [x] Release the 3D relighting code
+原始项目论文与主页仍然适用：
 
+- Project Page: <https://neural-gaffer.github.io/>
+- Paper: <https://arxiv.org/abs/2406.07520>
 
+## 当前仓库最重要的事实
 
+- 当前活跃仓库就是本目录 `Neural_Gaffer/`。
+- 同级目录 `../Neural_Gaffer_original/` 和 `../Neural_Gaffer_original_main_baseline/` 是历史快照/基线副本，不是当前主工作树。
+- 当前 README 以前长期停留在“上游开源说明”口径，已经不能准确反映本地实验、日志和论文材料状态；仓库现状请优先看 `docs/repo_status_2026-03-31.md`。
+- 论文文档里频繁引用的 baseline `7cn19b1e` 是历史 W&B 结果口径，并不在当前本地 `wandb/` 缓存中；本地可核对的 run、checkpoint 与导出资产已经在状态文档中单独说明。
 
-## 1. Preparation 
-### 1.1 Installation
-```bash
-conda create -n neural-gaffer python=3.9
-conda activate neural-gaffer 
-pip install -r requirements.txt
+## 当前常用入口
 
-pip3 install -U xformers==0.0.28 --index-url https://download.pytorch.org/whl/cu118
-```
-### 1.2 Downloading the checkpoint
-The checkpoint file will be saved in the `./log/neural_gaffer_res256` folder.
-```bash
-cd logs
-wget https://huggingface.co/coast01/Neural_Gaffer/resolve/main/neural_gaffer_res256_ckpt.zip
+### 1. 训练
 
-unzip neural_gaffer_res256_ckpt.zip
-cd ..
-```
+- 主训练脚本：`neural_gaffer_training.py`
+- 参数定义：`parse_args.py`
+- 兼容旧工作流的总配置：`configs/neural_gaffer_training_gpu1_highlight.txt`
+- 当前更推荐的拆分式配置入口：
+  - `configs/methods/highlight_hybrid_probe.txt`
+  - `configs/datasets/current_local_official.txt`
 
-
-### 1.3 Downloading the training and validation dataset
-Here we provide a **subset** of our training dataset and full set of the validation dataset. (But we didn't use all of the validation dataset when training the model and computing the metrics because it's a little too big). 
-* [Training Dataset Subset - Images](https://huggingface.co/datasets/coast01/NeuralGafferDataset/resolve/main/training_data_SUBSET_img.zip?download=true)
-* [Training Dataset Subset - Lighting](https://huggingface.co/datasets/coast01/NeuralGafferDataset/resolve/main/training_data_SUBSET_lighting.zip?download=true)
-* [Validation Dataset - Images](https://huggingface.co/datasets/coast01/NeuralGafferDataset/resolve/main/val_rendered_images_resized.zip?download=true)
-* [Validation Dataset - Lighting](https://huggingface.co/datasets/coast01/NeuralGafferDataset/resolve/main/val_preprocessed_environment_resized.zip?download=true)
-
-The training dataset subset here only has 1000 objects, which is a subset of the full training dataset used to train our model (~ 90,000 objects). We provide the subset here to help you test if the code can be run correctly. The full training dataset object list and our validatoin dataset list in the `./filtered_object_list` folder.
-
-The original training dataset is too large to be uploaded to Hugging Face. I have provided the rendering code and preprocessing code [here](https://github.com/Haian-Jin/Neural_Gaffer/tree/main/scripts/Objavarse_rendering).
-
-## 2. Training
-Before running, please change the dataset directories (training and validation) in `configs/neural_gaffer_training.txt`. The following command trains the diffusion model for 2D relighting with 8 GPUs.
+示例：
 
 ```bash
-export NCCL_P2P_DISABLE=1 && export NCCL_IB_DISABLE=1 &&  accelerate launch --main_process_port 25525 --config_file configs/8_16fp.yaml  neural_gaffer_training.py  --dataloader_num_workers 32  --use_ema --gradient_checkpointing   --config configs/neural_gaffer_training.txt
+accelerate launch --config_file configs/1_16fp.yaml neural_gaffer_training.py \
+  --method_config configs/methods/highlight_hybrid_probe.txt \
+  --data_config configs/datasets/current_local_official.txt
 ```
 
-## 3. Inference commands for 2D relighting 
-### 3.1 Relighting in-the-wild single image input
-#### 3.1.1 Image preprocessing: segment, rescale, and recenter
-Put the input images under the `--img_dir` folder and run the following command to segment the foreground. The preprocessed data will be saved in `--out_dir`.
-Here, we borrow code from One-2-3-45.
+### 2. 推理与对比图
 
-*Note: If your input images have masks and you don't want to do rescale and recenter, you can skip this step by manually saving the three-channel foreground and mask of each input image in the `{$out_dir}/img` and `{$out_dir}/mask` folders, respectively.*
+- 单图/真实图像推理：`neural_gaffer_inference_real_data.py`
+- 3D/Objaverse 风格推理：`neural_gaffer_inference_objaverse_3d.py`
+- 生成对比清单：`scripts/create_relighting_comparison_manifest.py`
+- 导出统一资产：`scripts/export_relighting_comparison_assets.py`
+- 拼接论文式面板：`scripts/build_relighting_comparison_panel.py`
+- 批量 checkpoint sweep：`scripts/run_checkpoint_panel_suite.py`
 
-```bash
-# download the pre-trained SAM to segment the foreground
-# only need to run once
-cd models/checkpoints
-wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
-cd ../..
+### 3. 论文与图示
 
-#################################################################
+- 文档索引：`docs/README.md`
+- 仓库现状与日志说明：`docs/repo_status_2026-03-31.md`
+- 论文写作入口：`docs/paper.md`
+- 中文主稿：`docs/cadgraphics_template_cn.tex`
+- 图示与裁剪图：`docs/figures/`
 
-# Segment the foreground
-python scripts/segment_foreground.py --img_dir ./demo --sam_ckpt ./models/checkpoints/sam_vit_h_4b8939.pth --out_dir ./preprocessed_data  --gpu_idx 0
+## 目录说明
 
-# The preprocessed data will be saved in ./'preprocessed_data'
-```
-#### 3.1.2 Preprocessing the target environment maps
-Place the target environment maps in the `--lighting_dir` folder, then run the following command to preprocess them. The preprocessed data will be saved in the `--output_dir `folder. Use `--frame_num` to specify the number of frames for rotating the environment maps 360 degrees along the azimuthal direction. 
-```bash
-python scripts/generate_bg_and_rotate_envir_map.py --lighting_dir 'demo/environment_map_sample' --output_dir './preprocessed_lighting_data' --frame_num 120
-```
-#### 3.1.3 Relighting
-The following command relights the input images stored in the `--val_img_dir` folder using preprocessed target lighting data from the `--val_lighting_dir`. The relighted images will be saved in the `--save_dir` folder. The checkpoint file for the diffusion model is located in the `--output_dir` folder.
+| 路径 | 作用 |
+| --- | --- |
+| `configs/` | 训练、数据协议、对比 suite 配置 |
+| `dataset/` | 数据加载与前景掩码相关逻辑 |
+| `scripts/` | 预处理、验证、导出、对比图、外部基线脚本 |
+| `docs/` | 论文草稿、实验记录、图示、参考 PDF、归档模板 |
+| `logs/` | 训练输出、checkpoint、导出资产、中间实验产物 |
+| `training_data/` | 本地训练数据入口 |
+| `validation_data/` | 本地验证数据入口 |
+| `external/` | 外部基线或第三方代码副本 |
 
-In total, this command will generate 2,400 relighted images ($5 \text{ input images} \times 4 \text{ different lighting conditions} \times 120 \text{ rotations per lighting}$). Using a single A6000 GPU, this process takes approximately 20 minutes.
-```bash
-accelerate launch --main_process_port 25539 --config_file configs/1_16fp.yaml neural_gaffer_inference_real_data.py --output_dir logs/neural_gaffer_res256 --mixed_precision fp16 --resume_from_checkpoint latest --total_view 120 --lighting_per_view 4 --val_img_dir './preprocessed_data/img' --val_lighting_dir "./preprocessed_lighting_data" --save_dir ./real_data_relighting 
-```
+## 推荐阅读顺序
 
-#### 3.1.4 Compositing the background (optional)
-```bash
-python scripts/composting_background.py --mask_dir ./preprocessed_data/mask --lighting_dir ./preprocessed_lighting_data --relighting_dir ./real_data_relighting --save_dir ./real_data_relighting/video
-```
+1. `docs/repo_status_2026-03-31.md`
+2. `docs/paper.md`
+3. `docs/paper_plan_cn.md`
+4. `docs/3.27三十八届图形仿真大会_experiment_and_figure_plan_cn.md`
 
-<!-- ### 3.2 Relighting the Ojaverse-like instances
-Coming soon -->
+## 备注
 
-## 4. Relighting 3D objects without inverse rendering
-Given a radiance field of a 3D object as input, our diffusion model serves as a robust prior to directly relight the radiance field, eliminating the need for physically-based inverse rendering. By default, the resolution is set to 256×256.
-
-#### Relighting Pipeline
-- **Section 4.1**: Preparing the data required for Stage 1 of the pipeline.
-- **Section 4.2**: Optimizing the radiance field using multiview inputs (we use TensoRF for this purpose).
-- **Section 4.3**: Relighting the radiance field directly, leveraging the diffusion model as a data-driven prior. This process bypasses inverse rendering and incorporates both Stage 1 and Stage 2.
-
-#### Note:
-* Our 3D relighting pipeline assumes the 3D radiance field as input, making the order of **4.1** and **4.2** interchangeable. Additionally, the input camera poses used in **4.1** can be replaced with arbitrary predefined camera poses. However, changing their order may require code modifications to ensure compatibility with the dataloader format.
-
-* We have 6 objects rendered under 4 unseen lighting conditions as the testing dataset. The data are stored in a similar format as many Objaverse rendering data (such as Zero123). For each object, 100 camera poses are sampled to generate
-training images and 20 camera poses are sampled for testing images. We use the images rendered under the first lighting condition for training and the images rendered under the other three lighting conditions for relighting evaluation. Here are the commands to download the data:
-```bash
-wget https://huggingface.co/coast01/Neural_Gaffer/resolve/main/3d_relighting_data.zip
-unzip 3d_relighting_data.zip
-rm 3d_relighting_data.zip
-```
-
-### 4.1 Prepare the data used in stage 1
-
-The following command relights the input images stored in the `--val_img_dir` folder using HDR environment maps from the `--val_lighting_dir`. The relighted images will be saved in the `--save_dir` folder. The checkpoint file for the diffusion model is located in the `--output_dir` folder. `--cond_lighting_index` specifies the index of the lighting used as the lighting of the input images.
-In total, this command will generate 2,888 relighted images ($6 \text{ objects} \times 4 \text{ different lighting conditions} \times 120 \text{ rotations per lighting}$). Using a single A6000 GPU, this process takes approximately 24 minutes.
-```bash
-accelerate launch --main_process_port 25539 --config_file configs/1_16fp.yaml neural_gaffer_inference_objaverse_3d.py --output_dir logs/neural_gaffer_res256 --mixed_precision fp16 --resume_from_checkpoint latest --total_view 120 --lighting_per_view 4 --cond_lighting_index 0 --val_img_dir './3d_relighting_data' --val_lighting_dir './demo/hdrmaps_for_3d' --save_dir './prepocessed_3d_relighting_data'
-```
-
-### 4.2 Optimize a radiance field
-`${to_train}` speficies the object to be optimized. `--basedir` specifies the directory to save the logs and TensoRF checkpoints. `--datadir` specifies the directory of the preprocessed data (from Sec 4.1).
-
-Here, we use the TensoRF to optimize the radiance field. The code is built on [TensoRF](https://github.com/apchenstu/TensoRF).
-
-```bash
-cd neural_gaffer_3d_relighting && export PYTHONPATH=. 
-
-to_train=helmet && python train.py --config configs/gaffer3d_tensorf.txt --basedir ./3d_logs/tensorf/log_${to_train} --datadir ../prepocessed_3d_relighting_data/val_unseen_relighting_only/${to_train}
-```
-
-### 4.3 Relighting the radiance field without the inverse rendering and with diffusion data prior (Stage 1 & 2)
-Assuming we have 4 unseen lighting conditions, the input radiance field was rendered under lighting 0, by default. Then the `relight_idx` can be set to 1, 2, and 3, which correspond to the other three unseen lighting conditions. The following command relights the radiance field using the diffusion model as a prior. The relighted radiance field will be saved in the `--save_dir` folder. The checkpoint file for the input radiance field is located in the `--ckpt` folder.
-```bash
-to_train=helmet && relight_idx=1  && python train_relighitng_3d.py --config configs/gaffer3d_relighting.txt --ckpt ./3d_logs/tensorf/log_${to_train}/tensorf_VM/tensorf_VM.th  --basedir ./3d_logs/neural_gaffer_3d_relighting/log_${to_train} --datadir ../prepocessed_3d_relighting_data/val_unseen_relighting_only/${to_train} --to_relight_idx ${relight_idx}
-```
-## 5. Limitations
-<img width="500" alt="image" src="https://github.com/user-attachments/assets/140c31d9-6b3e-4b9f-a872-6624d49cae99">
-
-Given the high resource demands of data preprocessing (specifically, rotating the HDR environment
-map) and model training, and considering our limited university resources, we trained the model at a
-lower image resolution of 256 × 256. 
-
-The low resolution has been our key limitation. We used VAE in our base diffusion model to encode input images into latent maps, and then directly decode them. We found that VAE struggles
-to preserve identity for objects with fine details even from latent maps encoded from the input images at this resolution(256 × 256), which in turn results in many relighting failure cases at this resolution. Finetuning our model at a higher resolution will greatly help solve this issue. Changing the base diffusion model to a more powerful one, such as stable diffusion 3 or Flux, will also help.
-
-If you find the relighting results failed to preserve the identity of the object, you can test if this issue is caused by VAE by using the following command to encode and then decode the input images. If the decoded images have obvious artifacts, it indicates that the pre-trained VAE we used is the main cause of the failure. 
-```bash
-# --input_image_path specifies the path of the input image you want to test
-python scripts/diffusion_test.py --input_image_path "./demo/vae_test/lego.png"  
-```
-## 6. Acknowledgment
-
-* This work was done while Haian Jin was a full-time student at Cornell.
-
-
-* The selection of data and the generation of all figures and results was led by Cornell University.
-
-* The codebase is built on top of the [Zero123-HF](https://github.com/kxhit/zero123-hf), a diffuser implementation of Zero123. Thanks for the great work!
-## 7. Citation
-
-If you find our code helpful, please cite our paper:
-
-```
-@inproceedings{jin2024neural_gaffer,
-  title     = {Neural Gaffer: Relighting Any Object via Diffusion},
-  author    = {Haian Jin and Yuan Li and Fujun Luan and Yuanbo Xiangli and Sai Bi and Kai Zhang and Zexiang Xu and Jin Sun and Noah Snavely},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2024},
-}
-```
+- `logs/`、`training_data/`、`validation_data/`、`wandb/` 大多属于本地工作产物，体量大、版本杂，仓库里默认不把它们当作稳定 API。
+- 本次清理保留了实验结果本体，只对入口文档、说明口径和 LaTeX 构建垃圾做了整理。

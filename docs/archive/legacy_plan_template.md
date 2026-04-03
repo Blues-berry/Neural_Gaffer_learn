@@ -1,4 +1,6 @@
-# Stupid Plan
+# Legacy Planning Template
+
+本文件仅保留为通用计划模板归档，不再作为项目正式文档入口。
 
 ## Goal
 - [ ] Define the single outcome this plan must achieve.

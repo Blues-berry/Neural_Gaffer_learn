@@ -13,8 +13,10 @@ if str(REPO_ROOT) not in sys.path:
 READY_ROOT = REPO_ROOT / "logs" / "ready_subdatasets_20260328"
 
 
-def read_json_list(path: Path) -> list[str]:
-    return json.loads(path.read_text())
+def read_object_list(path: Path) -> list[str]:
+    if path.suffix.lower() == ".json":
+        return json.loads(path.read_text())
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()]
 
 
 def safe_link(src: Path, dest: Path):
@@ -22,6 +24,32 @@ def safe_link(src: Path, dest: Path):
         return
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.symlink_to(src)
+
+
+def resolve_source(source: dict):
+    if "seen_img_dir" not in source and "root" in source:
+        source_root = Path(source["root"])
+        return {
+            "name": source["name"],
+            "root": str(source_root),
+            "seen_img_dir": source_root / "val" / "images" / "seen_lighting",
+            "unseen_img_dir": source_root / "val" / "images" / "unseen_lighting",
+            "seen_lighting_dir": source_root / "val" / "lighting" / "seen_lighting",
+            "unseen_lighting_dir": source_root / "val" / "lighting" / "unseen_lighting",
+            "val_seen_list": source_root / "val" / "images" / "seen_lighting" / "val_seen_object_list.json",
+            "val_unseen_list": source_root / "val" / "images" / "unseen_lighting" / "val_unseen_object_list.json",
+        }
+
+    return {
+        "name": source["name"],
+        "root": source.get("root", ""),
+        "seen_img_dir": Path(source["seen_img_dir"]),
+        "unseen_img_dir": Path(source["unseen_img_dir"]),
+        "seen_lighting_dir": Path(source["seen_lighting_dir"]),
+        "unseen_lighting_dir": Path(source["unseen_lighting_dir"]),
+        "val_seen_list": Path(source["val_seen_list"]),
+        "val_unseen_list": Path(source["val_unseen_list"]),
+    }
 
 
 def build_validation_union(output_dir: Path, sources: list[dict]):
@@ -42,15 +70,15 @@ def build_validation_union(output_dir: Path, sources: list[dict]):
     per_source = []
 
     for source in sources:
-        source_name = source["name"]
-        source_root = Path(source["root"])
-        source_seen_img = source_root / "val" / "images" / "seen_lighting"
-        source_unseen_img = source_root / "val" / "images" / "unseen_lighting"
-        source_seen_lighting = source_root / "val" / "lighting" / "seen_lighting"
-        source_unseen_lighting = source_root / "val" / "lighting" / "unseen_lighting"
+        resolved = resolve_source(source)
+        source_name = resolved["name"]
+        source_seen_img = resolved["seen_img_dir"]
+        source_unseen_img = resolved["unseen_img_dir"]
+        source_seen_lighting = resolved["seen_lighting_dir"]
+        source_unseen_lighting = resolved["unseen_lighting_dir"]
 
-        source_seen_ids = read_json_list(source_seen_img / "val_seen_object_list.json")
-        source_unseen_ids = read_json_list(source_unseen_img / "val_unseen_object_list.json")
+        source_seen_ids = read_object_list(resolved["val_seen_list"])
+        source_unseen_ids = read_object_list(resolved["val_unseen_list"])
 
         added_seen = 0
         added_unseen = 0
@@ -80,7 +108,7 @@ def build_validation_union(output_dir: Path, sources: list[dict]):
         per_source.append(
             {
                 "name": source_name,
-                "root": str(source_root),
+                "root": resolved["root"],
                 "val_seen_count": added_seen,
                 "val_unseen_count": added_unseen,
             }
@@ -124,12 +152,31 @@ def build_presets():
                 {"name": "landscape", "root": str(READY_ROOT / "landscape")},
             ],
         },
+        "all_ready_plus_official": {
+            "output_dir": REPO_ROOT / "logs" / "dataset_validation_unions" / "all_ready_plus_official_20260403",
+            "sources": [
+                {"name": "official_2000", "root": str(READY_ROOT / "official_2000")},
+                {"name": "ecommerce", "root": str(READY_ROOT / "ecommerce")},
+                {"name": "three_future", "root": str(READY_ROOT / "three_future")},
+                {"name": "landscape", "root": str(READY_ROOT / "landscape")},
+                {
+                    "name": "official_orig",
+                    "root": str(REPO_ROOT / "validation_data"),
+                    "seen_img_dir": str(REPO_ROOT / "validation_data" / "images" / "val_rendered_images_resized" / "validation" / "seen_lighting"),
+                    "unseen_img_dir": str(REPO_ROOT / "validation_data" / "images" / "val_rendered_images_resized" / "validation" / "unseen_lighting"),
+                    "seen_lighting_dir": str(REPO_ROOT / "validation_data" / "lighting" / "val_preprocessed_environment_resized" / "seen_lighting"),
+                    "unseen_lighting_dir": str(REPO_ROOT / "validation_data" / "lighting" / "val_preprocessed_environment_resized" / "unseen_lighting"),
+                    "val_seen_list": str(REPO_ROOT / "validation_data" / "images" / "val_rendered_images_resized" / "validation" / "seen_lighting" / "val_seen_object_list.json"),
+                    "val_unseen_list": str(REPO_ROOT / "validation_data" / "images" / "val_rendered_images_resized" / "validation" / "unseen_lighting" / "val_unseen_object_list.json"),
+                },
+            ],
+        },
     }
 
 
 def main():
     parser = argparse.ArgumentParser(description="Build a validation union from ready subdataset val views.")
-    parser.add_argument("--preset", type=str, default="full_main", choices=["full_main", "all_ready"])
+    parser.add_argument("--preset", type=str, default="full_main", choices=["full_main", "all_ready", "all_ready_plus_official"])
     parser.add_argument("--output_dir", type=str, default=None)
     args = parser.parse_args()
 

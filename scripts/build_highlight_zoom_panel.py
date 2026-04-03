@@ -2,11 +2,12 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Build a relighting comparison panel from exported assets.")
+    parser = argparse.ArgumentParser(description="Build a highlight-focused zoom panel from exported relighting assets.")
     parser.add_argument("--assets-manifest", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument(
@@ -18,33 +19,21 @@ def parse_args():
             "foreground_mask, gt_highlight_mask, method:<name>, method_mask:<name>."
         ),
     )
-    parser.add_argument(
-        "--methods",
-        nargs="*",
-        default=["dilightnet", "ours"],
-        help="Method column order to render before ground-truth and target lighting.",
-    )
-    parser.add_argument("--tile-size", type=int, default=256)
+    parser.add_argument("--methods", nargs="*", default=["baseline", "ours_full"])
+    parser.add_argument("--focus-methods", nargs="*", default=None, help="Methods whose highlight masks are used when computing the zoom bbox.")
+    parser.add_argument("--tile-size", type=int, default=220)
     parser.add_argument("--padding", type=int, default=18)
     parser.add_argument("--header-height", type=int, default=72)
-    parser.add_argument("--hide-headers", action="store_true")
-    parser.add_argument("--hide-row-labels", action="store_true")
-    parser.add_argument(
-        "--no-text",
-        action="store_true",
-        help="Hide both headers and row labels to create a clean image-only panel.",
-    )
+    parser.add_argument("--crop-padding", type=int, default=20)
+    parser.add_argument("--min-crop-size", type=int, default=72)
+    parser.add_argument("--max-samples", type=int, default=None)
     return parser.parse_args()
 
 
 def pretty_column_name(name: str):
     mapping = {
-        "dilightnet": "DiLightNet",
-        "rgbx": "RGB<->X",
-        "ours": "Ours",
-        "ours_full": "Ours (Full)",
         "baseline": "Baseline (Gaffer)",
-        "7cn19b1e": "Baseline (Gaffer)",
+        "ours_full": "Ours (Full)",
         "official-demo": "Official Demo",
         "ground-truth": "Ground-truth",
         "target lighting": "Target Lighting",
@@ -120,16 +109,112 @@ def resolve_column(sample: dict, token: str):
     raise ValueError(f"Unsupported column token: {token}")
 
 
+def load_mask(path: str | None):
+    if not path:
+        return None
+    mask_path = Path(path)
+    if not mask_path.exists():
+        return None
+    image = Image.open(mask_path).convert("L")
+    return np.asarray(image, dtype=np.float32) / 255.0
+
+
+def resize_mask(mask: np.ndarray, target_size: tuple[int, int]):
+    target_w, target_h = target_size
+    image = Image.fromarray((np.clip(mask, 0.0, 1.0) * 255.0).astype(np.uint8), mode="L")
+    if image.size != (target_w, target_h):
+        image = image.resize((target_w, target_h), Image.Resampling.NEAREST)
+    return np.asarray(image, dtype=np.float32) / 255.0
+
+
+def square_bbox_from_mask(mask: np.ndarray, padding: int = 0, min_crop_size: int = 72):
+    ys, xs = np.nonzero(mask > 0.5)
+    height, width = mask.shape
+    if ys.size == 0 or xs.size == 0:
+        side = min(max(int(min_crop_size), min(height, width) // 2), min(height, width))
+        cy = height / 2.0
+        cx = width / 2.0
+    else:
+        top = int(ys.min()) - int(padding)
+        bottom = int(ys.max()) + int(padding) + 1
+        left = int(xs.min()) - int(padding)
+        right = int(xs.max()) + int(padding) + 1
+        cy = (top + bottom) / 2.0
+        cx = (left + right) / 2.0
+        side = max(bottom - top, right - left, int(min_crop_size))
+
+    side = min(int(side), min(height, width))
+    half = side / 2.0
+    top = int(round(cy - half))
+    left = int(round(cx - half))
+    bottom = top + side
+    right = left + side
+
+    if top < 0:
+        bottom -= top
+        top = 0
+    if left < 0:
+        right -= left
+        left = 0
+    if bottom > height:
+        top -= bottom - height
+        bottom = height
+    if right > width:
+        left -= right - width
+        right = width
+
+    top = max(top, 0)
+    left = max(left, 0)
+    bottom = min(bottom, height)
+    right = min(right, width)
+    return top, bottom, left, right
+
+
+def crop_image(image: Image.Image, bbox):
+    if bbox is None:
+        return image
+    top, bottom, left, right = bbox
+    return image.crop((left, top, right, bottom))
+
+
+def build_focus_mask(sample: dict, focus_methods: list[str] | None):
+    gt_mask = load_mask(sample.get("gt_highlight_mask_binary_export"))
+    if gt_mask is None:
+        gt_mask = load_mask(sample.get("foreground_mask_export"))
+    if gt_mask is None:
+        return None
+
+    focus_mask = np.asarray(gt_mask, dtype=np.float32)
+    method_names = focus_methods or sorted(sample.get("methods", {}).keys())
+    for method_name in method_names:
+        method_mask = load_mask(sample.get("methods", {}).get(method_name, {}).get("highlight_mask_binary"))
+        if method_mask is None:
+            continue
+        if method_mask.shape != focus_mask.shape:
+            method_mask = resize_mask(method_mask, (focus_mask.shape[1], focus_mask.shape[0]))
+        focus_mask = np.clip(focus_mask + method_mask, 0.0, 1.0)
+    return focus_mask
+
+
 def main():
     args = parse_args()
-    hide_headers = args.hide_headers or args.no_text
-    hide_row_labels = args.hide_row_labels or args.no_text
     assets = json.loads(Path(args.assets_manifest).read_text(encoding="utf-8"))
-    samples = assets["samples"]
+    samples = list(assets.get("samples", []))
+    if args.max_samples is not None:
+        samples = samples[: max(int(args.max_samples), 0)]
+
     if args.columns:
         column_tokens = list(args.columns)
     else:
-        column_tokens = ["input_image"] + [f"method:{name}" for name in args.methods] + ["ground_truth", "target_lighting"]
+        column_tokens = [
+            "method:baseline",
+            "method:ours_full",
+            "ground_truth",
+            "gt_highlight_mask",
+            "method_mask:baseline",
+            "method_mask:ours_full",
+        ]
+
     column_labels = [resolve_column(samples[0], token)[0] for token in column_tokens] if samples else []
     cols = len(column_labels)
     rows = len(samples)
@@ -138,35 +223,34 @@ def main():
     tile_h = args.tile_size
     left_margin = 28
     top_margin = 20
-    header_height = 0 if hide_headers else args.header_height
     width = left_margin * 2 + cols * tile_w + (cols - 1) * args.padding
-    height = top_margin * 2 + header_height + rows * tile_h + (rows - 1) * args.padding
+    height = top_margin * 2 + args.header_height + rows * tile_h + (rows - 1) * args.padding
 
     canvas = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(canvas)
     row_font = load_font(18, bold=False)
 
-    if not hide_headers:
-        x = left_margin
-        for col_name in column_labels:
-            header_font = fit_font(col_name, tile_w, start_size=28, min_size=16, bold=False)
-            centered_text(draw, (x, top_margin, x + tile_w, top_margin + header_height - 16), col_name, header_font, (24, 24, 28))
-            x += tile_w + args.padding
+    x = left_margin
+    for col_name in column_labels:
+        header_font = fit_font(col_name, tile_w, start_size=28, min_size=16, bold=False)
+        centered_text(draw, (x, top_margin, x + tile_w, top_margin + args.header_height - 16), col_name, header_font, (24, 24, 28))
+        x += tile_w + args.padding
 
-    y = top_margin + header_height
+    y = top_margin + args.header_height
     for sample in samples:
-        resolved_columns = [resolve_column(sample, token) for token in column_tokens]
-        row_images = [path for _, path in resolved_columns]
+        focus_mask = build_focus_mask(sample, args.focus_methods)
+        bbox = square_bbox_from_mask(focus_mask, padding=args.crop_padding, min_crop_size=args.min_crop_size) if focus_mask is not None else None
 
         x = left_margin
-        for col_name, image_path in zip(column_labels, row_images):
+        for token, col_name in zip(column_tokens, column_labels):
+            _, image_path = resolve_column(sample, token)
             tile = open_or_placeholder(image_path, (tile_w, tile_h), f"{col_name}\npending")
+            tile = crop_image(tile, bbox).resize((tile_w, tile_h), Image.Resampling.BICUBIC)
             canvas.paste(tile, (x, y))
             x += tile_w + args.padding
 
-        if not hide_row_labels:
-            sample_label = sample.get("display_name") or f"{sample['preset'].upper()}  {sample['object_id'][:8]}"
-            draw.text((left_margin, y + tile_h + 4), sample_label, font=row_font, fill=(138, 144, 156))
+        sample_label = sample.get("display_name") or f"{sample['preset'].upper()}  {sample['object_id'][:8]}"
+        draw.text((left_margin, y + tile_h + 4), sample_label, font=row_font, fill=(138, 144, 156))
         y += tile_h + args.padding
 
     output_path = Path(args.output)

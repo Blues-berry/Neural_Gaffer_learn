@@ -18,29 +18,42 @@ log() {
   echo "[$(date -Iseconds)] $*" | tee -a "$QUEUE_LOG"
 }
 
-log "QUEUE STARTED"
-log "Waiting for scripts/queue_after_abl05_run_two_best.sh to finish."
-
-while pgrep -f "scripts/queue_after_abl05_run_two_best.sh" >/dev/null 2>&1; do
-  sleep 60
-done
-
-LATEST_PREV_LOG="$(ls -1t $PREV_QUEUE_LOG_GLOB 2>/dev/null | head -n 1 || true)"
-if [[ -n "${LATEST_PREV_LOG}" ]]; then
+previous_queue_completed() {
+  local latest_prev_log
+  latest_prev_log="$(ls -1t $PREV_QUEUE_LOG_GLOB 2>/dev/null | head -n 1 || true)"
+  if [[ -z "${latest_prev_log}" ]]; then
+    return 1
+  fi
   if "$PYTHON" - <<PY
 from pathlib import Path
-path = Path(r"""$LATEST_PREV_LOG""")
+path = Path(r"""$latest_prev_log""")
 text = path.read_text(encoding="utf-8", errors="ignore") if path.exists() else ""
 raise SystemExit(0 if "QUEUE ALL_DONE" in text else 1)
 PY
   then
-    log "Detected previous queue completion marker in ${LATEST_PREV_LOG}."
-  else
-    log "Previous queue exited without QUEUE ALL_DONE marker. Continuing with frequency experiment."
+    log "Detected previous queue completion marker in ${latest_prev_log}."
+    return 0
   fi
-else
-  log "Previous queue log not found. Continuing after queue process exit."
-fi
+  return 1
+}
+
+prerequisite_runs_active() {
+  pgrep -f "wandb_run_note spuru_hyblite_a|wandb_run_note spuru_cosine_lowlr_a" >/dev/null 2>&1
+}
+
+log "QUEUE STARTED"
+log "Waiting for the previous two-run queue to complete."
+
+while true; do
+  if previous_queue_completed; then
+    break
+  fi
+  if ! prerequisite_runs_active; then
+    log "No active prerequisite runs detected. Continuing without an explicit QUEUE ALL_DONE marker."
+    break
+  fi
+  sleep 60
+done
 
 sleep 30
 
