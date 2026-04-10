@@ -23,6 +23,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run a low-cost proxy relighting comparison on a balanced cross-domain manifest.")
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument("--methods", nargs="*", default=list(METHODS))
     parser.add_argument("--selection-method", default="auto", choices=["auto", "ours", "ours_full"])
     parser.add_argument("--top-k-per-dataset", type=int, default=1)
     return parser.parse_args()
@@ -399,6 +400,10 @@ def main():
     manifest_path = Path(args.manifest)
     output_root = Path(args.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
+    selected_methods = tuple(args.methods or METHODS)
+    invalid_methods = [method for method in selected_methods if method not in METHODS]
+    if invalid_methods:
+        raise ValueError(f"Unsupported proxy methods: {invalid_methods}. Available methods: {METHODS}")
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     samples = manifest["samples"]
@@ -427,13 +432,14 @@ def main():
         guidance = build_guidance(input_rgb, mask)
         albedo_rgb = estimate_albedo(input_rgb, normals)
 
-        method_outputs = {
-            "baseline": render_baseline(input_rgb, mask, normals, env, guidance),
-            "dilightnet": render_dilightnet(input_rgb, mask, normals, env, guidance),
-            "rgbx": render_rgbx(input_rgb, albedo_rgb, mask, normals, env, guidance),
-            "ours": render_ours(input_rgb, albedo_rgb, mask, normals, env, guidance),
-            "ours_full": render_ours_full(input_rgb, albedo_rgb, mask, normals, env, guidance),
+        available_outputs = {
+            "baseline": lambda: render_baseline(input_rgb, mask, normals, env, guidance),
+            "dilightnet": lambda: render_dilightnet(input_rgb, mask, normals, env, guidance),
+            "rgbx": lambda: render_rgbx(input_rgb, albedo_rgb, mask, normals, env, guidance),
+            "ours": lambda: render_ours(input_rgb, albedo_rgb, mask, normals, env, guidance),
+            "ours_full": lambda: render_ours_full(input_rgb, albedo_rgb, mask, normals, env, guidance),
         }
+        method_outputs = {method_name: available_outputs[method_name]() for method_name in selected_methods}
 
         dataset_name = sample.get("dataset", "unknown")
         dataset_label = DATASET_LABELS.get(dataset_name, dataset_name)
@@ -496,7 +502,7 @@ def main():
     metric_names = ("fg_mae", "fg_rmse", "fg_psnr", "highlight_mae", "highlight_rmse")
     overall = {}
     by_dataset = {}
-    for method_name in METHODS:
+    for method_name in selected_methods:
         method_rows = [{metric: row[metric] for metric in metric_names} for row in raw_metrics_rows if row["method"] == method_name]
         overall[method_name] = aggregate_metric_rows(method_rows)
         by_dataset[method_name] = {}
@@ -508,14 +514,18 @@ def main():
             ]
             by_dataset[method_name][dataset_name] = aggregate_metric_rows(dataset_rows)
 
-    best_ours_method = min(OURS_METHODS, key=lambda name: overall[name]["fg_rmse"])
-    if args.selection_method != "auto":
+    available_ours_methods = [name for name in OURS_METHODS if name in selected_methods and overall.get(name)]
+    best_ours_method = None
+    if available_ours_methods:
+        best_ours_method = min(available_ours_methods, key=lambda name: overall[name]["fg_rmse"])
+    if args.selection_method != "auto" and args.selection_method in available_ours_methods:
         best_ours_method = args.selection_method
 
     best_samples_by_method = {}
-    dataset_order = [row["dataset"] for row in raw_metrics_rows if row["method"] == METHODS[0]]
+    first_method = selected_methods[0] if selected_methods else METHODS[0]
+    dataset_order = [row["dataset"] for row in raw_metrics_rows if row["method"] == first_method]
     dataset_order = list(dict.fromkeys(dataset_order))
-    for method_name in OURS_METHODS:
+    for method_name in available_ours_methods:
         selected_keys = []
         selected_payload = []
         for dataset_name in dataset_order:
@@ -547,25 +557,27 @@ def main():
             "samples": selected_payload,
         }
 
-    selected_best_manifest = selected_dir / "best_by_domain_best_ours_assets_manifest.json"
-    write_json(
-        selected_best_manifest,
-        {
-            "source_manifest": str(assets_manifest_path),
-            "selection_method": best_ours_method,
-            "samples": [
-                sample
-                for sample in exported_samples
-                if sample["sample_key"] in {entry["sample_key"] for entry in best_samples_by_method[best_ours_method]["samples"]}
-            ],
-        },
-    )
+    selected_best_manifest = None
+    if best_ours_method is not None:
+        selected_best_manifest = selected_dir / "best_by_domain_best_ours_assets_manifest.json"
+        write_json(
+            selected_best_manifest,
+            {
+                "source_manifest": str(assets_manifest_path),
+                "selection_method": best_ours_method,
+                "samples": [
+                    sample
+                    for sample in exported_samples
+                    if sample["sample_key"] in {entry["sample_key"] for entry in best_samples_by_method[best_ours_method]["samples"]}
+                ],
+            },
+        )
 
     summary = {
         "source_manifest": str(manifest_path),
         "output_root": str(output_root),
         "proxy_mode": True,
-        "methods": list(METHODS),
+        "methods": list(selected_methods),
         "balanced_sample_count": len(exported_samples),
         "datasets": {
             dataset_name: {
@@ -579,7 +591,7 @@ def main():
         "best_ours_method": best_ours_method,
         "best_samples_by_method": best_samples_by_method,
         "assets_manifest": str(assets_manifest_path),
-        "best_assets_manifest": str(selected_best_manifest),
+        "best_assets_manifest": str(selected_best_manifest) if selected_best_manifest else None,
     }
     summary_path = stats_dir / "proxy_metrics_summary.json"
     write_json(summary_path, summary)

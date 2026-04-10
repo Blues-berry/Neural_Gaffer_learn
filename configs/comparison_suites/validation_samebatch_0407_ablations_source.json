@@ -1,0 +1,20 @@
+{
+  "methods": [
+    {
+      "name": "baseline",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/ours_single_v2"
+    },
+    {
+      "name": "hyblite",
+      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight/imgsoft-hyb30to50k-his60-hps75-q88-gb10-r40-w2-g2-lp0.03-wu3k-lpwu5k-80k-spuru_hyblite_a-0331-02"
+    },
+    {
+      "name": "freqsplit",
+      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight/imgsoft-q88-gb10-r40-w2-g2-freq-fl8-fh3-fs15-wu3k-80k-spuru_freqsplit_a-0402-01"
+    },
+    {
+      "name": "officialval",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/0407_officialval_0403_04"
+    }
+  ]
+}

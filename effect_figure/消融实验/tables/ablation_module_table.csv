@@ -1,0 +1,7 @@
+method,label,imgspace,imgspace_weight,hlw,quantile,highlight_quantile,highlight_min_threshold,highlight_max_threshold,blur_sigma,relative_mode,kernel,foreground_threshold,random_lighting_prob,output_dir
+abl00_base,Abl. Base,off,0.1,2,off,0.88,0.02,0.2,0,none,15,0.98,0.4,logs/neural_gaffer_training_gpu1_highlight/plain-t80-rc20-40-20-g2-wu3k-rws135-40k-abl00_base-0327-02
+abl01_imgspace_fixed,Abl. ImgSpace Fixed,on,0.1,2,off,0.88,0.02,0.2,0,none,15,0.98,0.4,logs/neural_gaffer_training_gpu1_highlight/imgsoft-t80-rc20-40-20-w2-g2-wu3k-rws135-40k-abl01_imgspace_fixed-0327-03
+abl02_quantile,Abl. Quantile,on,0.1,2,on,0.88,0.6,0.95,0,none,15,0.98,0.4,logs/neural_gaffer_training_gpu1_highlight/imgsoft-q88-rc20-40-20-w2-g2-wu3k-rws135-40k-abl02_quantile-0328-01
+abl03_blur,Abl. Blur,on,0.1,2,on,0.88,0.6,0.95,1,none,15,0.98,0.4,logs/neural_gaffer_training_gpu1_highlight/imgsoft-q88-gb10-rc20-40-20-w2-g2-wu3k-rws135-40k-abl03_blur-0328-02
+abl04_relative,Abl. Relative,on,0.1,2,on,0.88,0.02,0.2,1,difference,15,0.98,0.4,logs/neural_gaffer_training_gpu1_highlight/imgsoft-q88-gb10-reld-k15-rc20-40-20-w2-g2-wu3k-rws135-40k-abl04_relative-0329-01
+abl05_full_main,Abl. Full Main,on,0.1,2,on,0.88,0.02,0.2,1,difference,15,0.96,0.4,logs/neural_gaffer_training_gpu1_highlight/imgsoft-q88-gb10-reld-k15-rc20-40-20-w2-g2-wu3k-rws135-40k-abl05_full_main-0330-01

@@ -1,0 +1,31 @@
+{
+  "generated_at_utc": "2026-04-09T08:00:53.891944+00:00",
+  "eval_json": "/4T/CXY/Neural_Gaffer/effects/0408/foreground_highlight_supervision_ablation_only_v1/comparison_style_eval/highlight_metrics.json",
+  "metrics_summary_flat": "/4T/CXY/Neural_Gaffer/effects/0408/foreground_highlight_supervision_ablation_only_v1/comparison_style_eval/metrics_summary_flat.json",
+  "methods": [
+    "abl00_base",
+    "abl01_imgspace_fixed",
+    "abl02_quantile",
+    "abl03_blur",
+    "abl04_relative",
+    "abl05_full_main"
+  ],
+  "main_metrics": [
+    "full_psnr",
+    "foreground_psnr",
+    "fg_rmse"
+  ],
+  "highlight_metrics": [
+    "highlight_psnr",
+    "highlight_rmse",
+    "highlight_mask_iou",
+    "highlight_area_abs_error",
+    "highlight_saturated_ratio_abs_error",
+    "highlight_p95_luma_abs_error"
+  ],
+  "lpips_metrics": [
+    "lpips_full",
+    "lpips_foreground",
+    "lpips_highlight_crop"
+  ]
+}

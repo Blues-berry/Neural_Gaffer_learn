@@ -1,0 +1,50 @@
+{
+  "generated_at_utc": "2026-04-08T02:55:01.474089+00:00",
+  "rois": [
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_diffuse_transmission_teacup_v000_t001",
+      "bbox_tblr": [
+        132,
+        237,
+        320,
+        425
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__gso_top_paw_dog_bowl_blue_paw_bone_ceramic_v000_t010",
+      "bbox_tblr": [
+        342,
+        438,
+        168,
+        264
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_transmission_test_v000_t014",
+      "bbox_tblr": [
+        333,
+        429,
+        297,
+        393
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002",
+      "bbox_tblr": [
+        74,
+        170,
+        90,
+        186
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_serving_bowl_coupe_white_v000_t003",
+      "bbox_tblr": [
+        276,
+        470,
+        69,
+        263
+      ]
+    }
+  ]
+}

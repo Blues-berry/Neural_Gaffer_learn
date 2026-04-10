@@ -1,0 +1,50 @@
+{
+  "generated_at_utc": "2026-04-08T02:54:54.601988+00:00",
+  "rois": [
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014",
+      "bbox_tblr": [
+        197,
+        293,
+        73,
+        169
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014",
+      "bbox_tblr": [
+        207,
+        303,
+        197,
+        293
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001",
+      "bbox_tblr": [
+        304,
+        427,
+        142,
+        265
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002",
+      "bbox_tblr": [
+        74,
+        170,
+        90,
+        186
+      ]
+    },
+    {
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004",
+      "bbox_tblr": [
+        172,
+        282,
+        259,
+        369
+      ]
+    }
+  ]
+}

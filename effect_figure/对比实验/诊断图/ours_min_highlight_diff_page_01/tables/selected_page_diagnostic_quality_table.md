@@ -1,0 +1,8 @@
+# Selected Page Diagnostic Quality Table
+
+| method | highlight_centroid_distance | highlight_chroma_l1_on_gt_mask | highlight_mse_ratio | highlight_crop_ssim | lpips_highlight_crop |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Neural Gaffer | 0.0341 | 0.0289 | 0.5859 | 0.2986 | 0.5895 |
+| RGB↔X | 0.0787 | 0.0026 | 0.9135 | 0.7274 | 0.3889 |
+| DiLightNet | 0.0788 | 0.0044 | 0.9025 | 0.7311 | 0.3951 |
+| Ours | 0.0805 | 0.0044 | 0.5698 | 0.7415 | 0.4011 |

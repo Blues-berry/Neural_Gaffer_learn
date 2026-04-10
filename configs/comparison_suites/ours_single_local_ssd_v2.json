@@ -1,0 +1,8 @@
+{
+  "methods": [
+    {
+      "name": "ours",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/ours_single_v2"
+    }
+  ]
+}

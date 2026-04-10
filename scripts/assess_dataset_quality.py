@@ -196,6 +196,15 @@ def compute_highlight_mask_from_rgb(rgb_image, foreground_mask, args):
     rgb = normalize_rgb(rgb_image)
     if rgb is None:
         return None
+    foreground_mask = np.asarray(foreground_mask, dtype=np.float32)
+    if foreground_mask.shape != rgb.shape[:2]:
+        mask_tensor = torch.from_numpy(foreground_mask).unsqueeze(0).unsqueeze(0)
+        mask_tensor = F.interpolate(
+            mask_tensor,
+            size=rgb.shape[:2],
+            mode="nearest",
+        )
+        foreground_mask = mask_tensor.squeeze(0).squeeze(0).cpu().numpy()
     image_tensor = torch.from_numpy(rgb.astype(np.float32)).permute(2, 0, 1).unsqueeze(0)
     mask_tensor = torch.from_numpy(foreground_mask.astype(np.float32)).unsqueeze(0).unsqueeze(0)
     luminance = (

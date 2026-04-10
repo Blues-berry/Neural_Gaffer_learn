@@ -87,6 +87,18 @@ def resize_mask(mask: np.ndarray, size):
     return np.asarray(mask_image, dtype=np.float32) / 255.0
 
 
+def rgba_alpha_mask(image: Image.Image | None):
+    if image is None:
+        return None
+    rgba = image.convert("RGBA")
+    alpha = np.asarray(rgba, dtype=np.float32)[..., 3] / 255.0
+    if float(alpha.max()) <= 1e-6:
+        return None
+    if float(alpha.max()) - float(alpha.min()) <= 1e-6:
+        return None
+    return np.clip(alpha, 0.0, 1.0)
+
+
 def save_mask_assets(sample_dir: Path, stem: str, reference_image: Image.Image, highlight_mask: np.ndarray):
     resized_mask = resize_mask(highlight_mask, reference_image.size)
     mask_binary = Image.fromarray((resized_mask * 255).astype(np.uint8), mode="L")
@@ -522,15 +534,45 @@ def main():
         target_ldr_path = Path(sample["target_lighting_ldr_path"])
         object_dir = gt_path.parent
 
-        input_image = Image.open(input_path).convert("RGB")
-        gt_image = Image.open(gt_path).convert("RGB")
+        input_rgba = Image.open(input_path).convert("RGBA")
+        gt_rgba = Image.open(gt_path).convert("RGBA")
+        input_image = input_rgba.convert("RGB")
+        gt_image = gt_rgba.convert("RGB")
         target_ldr = Image.open(target_ldr_path).convert("RGB")
         mask, mask_source = load_mask(object_dir, sample["view_idx"], gt_path, args.foreground_background_threshold)
+        alpha_mask = rgba_alpha_mask(gt_rgba)
+        if alpha_mask is None:
+            alpha_mask = rgba_alpha_mask(input_rgba)
+            if alpha_mask is not None:
+                mask_source = "input_rgba_alpha"
+        else:
+            mask_source = "gt_rgba_alpha"
+        if alpha_mask is not None:
+            mask = alpha_mask
         mask = resize_mask(mask, gt_image.size)
         use_aggressive_edge_cleanup = mask_source == "fallback_white_background_mask"
+        white_bg = Image.new("RGB", gt_image.size, (255, 255, 255))
         proxy_bg = make_proxy_background(target_ldr, gt_image.size)
         projected_bg = make_perspective_background(target_ldr, gt_image.size)
         display_bg = make_display_background(target_ldr, gt_image.size, sample, object_dir)
+        input_white = composite_on_background(
+            input_image,
+            white_bg,
+            mask,
+            aggressive_edge_cleanup=use_aggressive_edge_cleanup,
+        )
+        gt_white = composite_on_background(
+            gt_image,
+            white_bg,
+            mask,
+            aggressive_edge_cleanup=use_aggressive_edge_cleanup,
+        )
+        input_composite = composite_on_background(
+            input_image,
+            display_bg,
+            mask,
+            aggressive_edge_cleanup=use_aggressive_edge_cleanup,
+        )
         gt_composite = composite_on_background(
             gt_image,
             display_bg,
@@ -538,8 +580,9 @@ def main():
             aggressive_edge_cleanup=use_aggressive_edge_cleanup,
         )
 
-        shutil.copy2(input_path, sample_dir / "input.png")
-        shutil.copy2(gt_path, sample_dir / "ground_truth_white_bg.png")
+        input_white.save(sample_dir / "input_white_bg.png")
+        input_composite.save(sample_dir / "input_composited.png")
+        gt_white.save(sample_dir / "ground_truth_white_bg.png")
         shutil.copy2(target_ldr_path, sample_dir / "target_lighting.png")
         proxy_bg.save(sample_dir / "target_background_proxy.png")
         projected_bg.save(sample_dir / "target_background_projected.png")
@@ -558,8 +601,12 @@ def main():
 
         exported = dict(sample)
         exported["sample_dir"] = str(sample_dir)
-        exported["input_export"] = str(sample_dir / "input.png")
-        exported["ground_truth_export"] = str(sample_dir / "ground_truth_composited.png")
+        exported["input_export"] = str(sample_dir / "input_white_bg.png")
+        exported["input_white_export"] = str(sample_dir / "input_white_bg.png")
+        exported["input_composited_export"] = str(sample_dir / "input_composited.png")
+        exported["ground_truth_export"] = str(sample_dir / "ground_truth_white_bg.png")
+        exported["ground_truth_white_export"] = str(sample_dir / "ground_truth_white_bg.png")
+        exported["ground_truth_composited_export"] = str(sample_dir / "ground_truth_composited.png")
         exported["target_lighting_export"] = str(sample_dir / "target_lighting.png")
         exported["background_export"] = str(sample_dir / "target_background.png")
         exported["background_projected_export"] = str(sample_dir / "target_background_projected.png")
@@ -593,6 +640,7 @@ def main():
             )
             exported["methods"][method_name] = {
                 "source": str(pred_path),
+                "white_bg": str(sample_dir / f"{method_name}_white_bg.png"),
                 "composited": str(sample_dir / f"{method_name}_composited.png"),
                 "highlight_mask": pred_highlight_overlay_path,
                 "highlight_mask_binary": pred_highlight_binary_path,

@@ -1,0 +1,30 @@
+{
+  "methods": [
+    {
+      "name": "baseline_0316_fallback",
+      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training0316",
+      "checkpoint_path": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training0316/checkpoint-80000/model.safetensors"
+    },
+    {
+      "name": "jbhdfvfc_ckpt80k",
+      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
+    },
+    {
+      "name": "cosine0331_03",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/ours_single_v2"
+    },
+    {
+      "name": "xkmlb19f_like_relative_fallback",
+      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight"
+    },
+    {
+      "name": "hyblite_0331_02_fallback",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/hyblite__imgsoft-hyb30to50k-his60-hps75-q88-gb10-r40-w2-g2-lp0.03-wu3k-lpwu5k-80k-spuru_hyblite_a-0331-02"
+    },
+    {
+      "name": "officialval_0403_04",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/0407_officialval_0403_04"
+    }
+  ]
+}

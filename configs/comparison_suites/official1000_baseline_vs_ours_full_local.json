@@ -1,0 +1,14 @@
+{
+  "methods": [
+    {
+      "name": "baseline",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/baseline_7cn19b1e/model.safetensors"
+    },
+    {
+      "name": "ours_full",
+      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
+    }
+  ]
+}

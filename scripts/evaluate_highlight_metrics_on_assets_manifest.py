@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from scripts.assess_dataset_quality import (
     resolve_mask_for_target,
     summarize_distribution,
 )
+from dataset.foreground_mask_utils import fallback_white_background_mask
 
 try:
     from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
@@ -33,6 +35,13 @@ def parse_bool(value):
     return str(value).lower() in ("1", "true", "yes", "y", "on")
 
 
+def safe_float(value):
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 def build_argparser():
     parser = argparse.ArgumentParser(
         description="Evaluate highlight-focused metrics on an exported relighting assets manifest."
@@ -41,6 +50,7 @@ def build_argparser():
     parser.add_argument("--methods", nargs="*", default=None, help="Explicit method names to evaluate.")
     parser.add_argument("--output-json", default=None)
     parser.add_argument("--output-md", default=None)
+    parser.add_argument("--output-per-sample-csv", default=None)
     parser.add_argument("--compute-lpips", type=parse_bool, default=True)
     parser.add_argument("--compute-ssim", type=parse_bool, default=True)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -347,6 +357,42 @@ def find_prediction_path(sample: dict, method_name: str):
     return None
 
 
+def resolve_gt_and_foreground(sample: dict, args):
+    gt_path_value = (
+        sample.get("gt_path")
+        or sample.get("ground_truth_export")
+        or sample.get("ground_truth_white_export")
+        or sample.get("ground_truth_composited_export")
+    )
+    if not gt_path_value:
+        return None
+
+    gt_path_resolved = resolve_repo_path(gt_path_value)
+    if gt_path_resolved is None or not gt_path_resolved.exists():
+        return None
+
+    if sample.get("gt_path"):
+        try:
+            object_dir = gt_path_resolved.parent
+            gt_rgb, foreground_mask, mask_source, view_idx = resolve_mask_for_target(
+                object_dir,
+                gt_path_resolved,
+                background_threshold=args.foreground_background_threshold,
+            )
+            gt_rgb = normalize_rgb(gt_rgb)
+            return gt_path_resolved, gt_rgb, foreground_mask, mask_source, view_idx
+        except Exception:
+            pass
+
+    gt_rgb = load_rgb(str(gt_path_resolved))
+    foreground_mask = fallback_white_background_mask(
+        gt_rgb,
+        background_threshold=args.foreground_background_threshold,
+    ).astype(np.float32)
+    view_idx = int(sample.get("view_idx", 0) or 0)
+    return gt_path_resolved, gt_rgb, foreground_mask, "white_background_fallback", view_idx
+
+
 def infer_methods(samples: list[dict], requested_methods: list[str] | None):
     if requested_methods:
         return requested_methods
@@ -441,6 +487,7 @@ def render_markdown(results: dict):
             lines.append("| --- | ---: | ---: | ---: | ---: | ---: |")
             for preset_name in sorted(by_preset.keys()):
                 preset_summary = by_preset[preset_name]
+                preset_label = "default" if preset_name in (None, "") else str(preset_name)
                 full_psnr = preset_summary.get("full_psnr", {}).get("mean")
                 full_ssim = preset_summary.get("full_ssim", {}).get("mean")
                 fg_psnr = preset_summary.get("foreground_psnr", {}).get("mean")
@@ -448,7 +495,7 @@ def render_markdown(results: dict):
                 hl_iou = preset_summary.get("highlight_mask_iou", {}).get("mean")
                 lines.append(
                     "| "
-                    + preset_name
+                    + preset_label
                     + " | "
                     + (f"{full_psnr:.6f}" if full_psnr is not None else "-")
                     + " | "
@@ -513,17 +560,10 @@ def main():
     method_records = {method_name: [] for method_name in methods}
 
     for sample in samples:
-        gt_path = sample.get("gt_path")
-        if not gt_path:
+        resolved = resolve_gt_and_foreground(sample, args)
+        if resolved is None:
             continue
-        gt_path_resolved = resolve_repo_path(gt_path)
-        object_dir = gt_path_resolved.parent
-        gt_rgb, foreground_mask, mask_source, view_idx = resolve_mask_for_target(
-            object_dir,
-            gt_path_resolved,
-            background_threshold=args.foreground_background_threshold,
-        )
-        gt_rgb = normalize_rgb(gt_rgb)
+        gt_path_resolved, gt_rgb, foreground_mask, mask_source, view_idx = resolved
         gt_highlight_mask = compute_highlight_mask_from_rgb(gt_rgb, foreground_mask, args)
 
         for method_name in methods:
@@ -622,14 +662,63 @@ def main():
     default_stem = assets_manifest_path.with_suffix("")
     output_json = resolve_repo_path(args.output_json) if args.output_json else Path(str(default_stem) + "_highlight_metrics.json")
     output_md = resolve_repo_path(args.output_md) if args.output_md else Path(str(default_stem) + "_highlight_metrics.md")
+    output_csv = resolve_repo_path(args.output_per_sample_csv) if args.output_per_sample_csv else None
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_md.parent.mkdir(parents=True, exist_ok=True)
+    if output_csv is not None:
+        output_csv.parent.mkdir(parents=True, exist_ok=True)
 
     output_json.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     output_md.write_text(render_markdown(results), encoding="utf-8")
+    if output_csv is not None:
+        metric_names = set()
+        for method_name in methods:
+            for record in method_records.get(method_name, []):
+                metric_names.update(record.get("metrics", {}).keys())
+        if "foreground_psnr" in metric_names:
+            metric_names.add("fg_psnr")
+        if "foreground_mse" in metric_names:
+            metric_names.add("fg_rmse")
+        ordered_metric_names = sorted(metric_names)
+        with output_csv.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "sample_key",
+                    "preset",
+                    "object_id",
+                    "view_idx",
+                    "target_file",
+                    "mask_source",
+                    "method",
+                    *ordered_metric_names,
+                ],
+            )
+            writer.writeheader()
+            for method_name in methods:
+                for record in method_records.get(method_name, []):
+                    row = {
+                        "sample_key": record.get("sample_key"),
+                        "preset": record.get("preset"),
+                        "object_id": record.get("object_id"),
+                        "view_idx": record.get("view_idx"),
+                        "target_file": record.get("target_file"),
+                        "mask_source": record.get("mask_source"),
+                        "method": method_name,
+                    }
+                    row.update(record.get("metrics", {}))
+                    if row.get("foreground_psnr") is not None and row.get("fg_psnr") is None:
+                        row["fg_psnr"] = row.get("foreground_psnr")
+                    if row.get("foreground_mse") is not None and row.get("fg_rmse") is None:
+                        row["fg_rmse"] = safe_float(row.get("foreground_mse"))
+                        if row["fg_rmse"] is not None:
+                            row["fg_rmse"] = float(row["fg_rmse"] ** 0.5)
+                    writer.writerow(row)
 
     print(f"Wrote JSON: {output_json}")
     print(f"Wrote Markdown: {output_md}")
+    if output_csv is not None:
+        print(f"Wrote CSV: {output_csv}")
 
 
 if __name__ == "__main__":

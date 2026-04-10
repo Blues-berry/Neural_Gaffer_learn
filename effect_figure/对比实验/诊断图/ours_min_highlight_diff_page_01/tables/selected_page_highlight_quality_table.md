@@ -1,0 +1,8 @@
+# Selected Page Highlight Quality Table
+
+| method | highlight_psnr | highlight_rmse | highlight_mask_iou | highlight_area_abs_error | highlight_saturated_ratio_abs_error | highlight_p95_luma_abs_error |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Ours | 12.3699 | 0.2494 | 0.0531 | 0.5805 | 0.3178 | 0.1793 |
+| DiLightNet | 10.3252 | 0.3152 | 0.0494 | 0.6907 | 0.3915 | 0.1804 |
+| RGB↔X | 9.8067 | 0.3355 | 0.0518 | 0.6940 | 0.3915 | 0.1804 |
+| Neural Gaffer | 8.1842 | 0.3976 | 0.2404 | 0.0192 | 0.0136 | 0.0702 |

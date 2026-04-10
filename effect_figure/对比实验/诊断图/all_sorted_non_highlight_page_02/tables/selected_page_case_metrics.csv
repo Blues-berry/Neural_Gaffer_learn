@@ -1,0 +1,21 @@
+case,method,full_psnr,full_ssim,lpips_full,highlight_psnr,highlight_rmse,highlight_mask_iou,highlight_centroid_distance,lpips_highlight_crop
+khronos_diffuse_transmission_teacup | courtyard,Neural Gaffer,5.8512,0.1549,0.7959,5.2792,0.5446,0.1749,0.0794,0.7959
+gso_top_paw_dog_bowl_blue_paw_bone_ceramic | brown_photostudio_02,Neural Gaffer,8.0115,0.2623,0.6321,8.5265,0.3747,0.2224,0.0995,0.6321
+khronos_transmission_test | city,Neural Gaffer,3.6796,0.0741,0.8085,5.2747,0.5448,0.1978,0.2007,0.8085
+khronos_metal_rough_spheres_no_textures | interior,Neural Gaffer,9.1386,0.1871,0.5637,10.6616,0.2930,0.3699,0.0417,0.5637
+gso_threshold_porcelain_serving_bowl_coupe_white | photo_studio_loft_hall,Neural Gaffer,8.5797,0.2802,0.6022,3.5370,0.6655,0.1452,0.1134,0.6022
+khronos_diffuse_transmission_teacup | courtyard,DiLightNet,6.3465,0.5945,0.7535,7.6621,0.4139,0.1215,0.0261,0.7535
+gso_top_paw_dog_bowl_blue_paw_bone_ceramic | brown_photostudio_02,DiLightNet,5.4489,0.5981,0.5913,5.6415,0.5223,0.1253,0.0599,0.5913
+khronos_transmission_test | city,DiLightNet,9.3871,0.6839,0.5246,8.7132,0.3667,0.1340,0.2185,0.5246
+khronos_metal_rough_spheres_no_textures | interior,DiLightNet,4.9440,0.3532,0.6085,8.8287,0.3619,0.0424,0.0518,0.6085
+gso_threshold_porcelain_serving_bowl_coupe_white | photo_studio_loft_hall,DiLightNet,4.6053,0.5519,0.6189,8.0310,0.3967,0.1408,0.1125,0.6189
+khronos_diffuse_transmission_teacup | courtyard,RGB↔X,6.2725,0.5879,0.7409,7.5067,0.4214,0.1248,0.0262,0.7409
+gso_top_paw_dog_bowl_blue_paw_bone_ceramic | brown_photostudio_02,RGB↔X,5.4085,0.5928,0.5873,5.6178,0.5237,0.1266,0.0599,0.5873
+khronos_transmission_test | city,RGB↔X,9.7268,0.7137,0.4943,9.7483,0.3255,0.1398,0.2147,0.4943
+khronos_metal_rough_spheres_no_textures | interior,RGB↔X,4.6939,0.3339,0.6226,7.2718,0.4329,0.0416,0.0519,0.6226
+gso_threshold_porcelain_serving_bowl_coupe_white | photo_studio_loft_hall,RGB↔X,4.1492,0.4968,0.6592,7.4184,0.4257,0.1382,0.1124,0.6592
+khronos_diffuse_transmission_teacup | courtyard,Ours,6.7796,0.6160,0.7367,8.9334,0.3575,0.1261,0.0271,0.7367
+gso_top_paw_dog_bowl_blue_paw_bone_ceramic | brown_photostudio_02,Ours,6.1349,0.6726,0.5695,6.6578,0.4646,0.1377,0.0598,0.5695
+khronos_transmission_test | city,Ours,6.0418,0.3930,0.7410,8.0655,0.3951,0.1787,0.1982,0.7410
+khronos_metal_rough_spheres_no_textures | interior,Ours,5.4117,0.3722,0.6598,10.8854,0.2856,0.0460,0.0632,0.6598
+gso_threshold_porcelain_serving_bowl_coupe_white | photo_studio_loft_hall,Ours,4.6315,0.5557,0.6236,8.1140,0.3929,0.1434,0.1129,0.6236

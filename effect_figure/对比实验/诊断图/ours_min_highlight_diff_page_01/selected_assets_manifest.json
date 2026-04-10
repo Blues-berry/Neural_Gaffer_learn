@@ -1,0 +1,433 @@
+{
+  "generated_at_utc": "2026-04-08T02:54:51.746944+00:00",
+  "source_panel_manifest": null,
+  "selection_name": "ours_min_highlight_diff",
+  "visual_mode": "input_white_methods_gt_hdrbg",
+  "samples": [
+    {
+      "preset": "highlight_test_samebatch_onehdri",
+      "source_bucket": "standalone",
+      "dataset": "highlight_test_samples",
+      "object_id": "highlight_test_samples__khronos_specular_silk_pouf",
+      "plain_object_id": "khronos_specular_silk_pouf",
+      "view_idx": 0,
+      "target_lighting_index": 14,
+      "cond_lighting_index": null,
+      "image_split": "highlight_test",
+      "lighting_split": "highlight_test",
+      "input_mode": "random_lighting",
+      "env_name": "white_studio_05",
+      "target_file": "000_014_white_studio_05.png",
+      "input_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_specular_silk_pouf/random_lighting_000.png",
+      "gt_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_specular_silk_pouf/000_014_white_studio_05.png",
+      "target_lighting_ldr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/LDR/khronos_specular_silk_pouf/000_014_white_studio_05.png",
+      "target_lighting_hdr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/HDR_rescaled/khronos_specular_silk_pouf/000_014_white_studio_05.png",
+      "same_render_batch_verified": true,
+      "same_render_batch_source_kind": "standalone_render_raw",
+      "same_render_batch_resolution_policy": "native_512_same_batch",
+      "recommended_loader_resolution": 256,
+      "render_batch_root": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_specular_silk_pouf",
+      "input_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_specular_silk_pouf/random_lighting_000.png",
+      "gt_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_specular_silk_pouf/000_014_white_studio_05.png",
+      "input_source_size_wh": [
+        512,
+        512
+      ],
+      "gt_source_size_wh": [
+        512,
+        512
+      ],
+      "input_source_mode": "RGBA",
+      "gt_source_mode": "RGBA",
+      "size_verification_mode": "opened",
+      "material_family": null,
+      "highlight_reason": null,
+      "local_model_path": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/highlight_test_samples/khronos/SpecularSilkPouf/glTF-Binary/SpecularSilkPouf.glb",
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014",
+      "sample_dir": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014",
+      "input_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/input_white_bg.png",
+      "input_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/input_white_bg.png",
+      "input_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/input_composited.png",
+      "ground_truth_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ground_truth_white_bg.png",
+      "ground_truth_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ground_truth_white_bg.png",
+      "ground_truth_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ground_truth_composited.png",
+      "target_lighting_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/target_lighting.png",
+      "background_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/target_background.png",
+      "background_projected_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/target_background_projected.png",
+      "foreground_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/foreground_mask.png",
+      "gt_highlight_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ground_truth_highlight_mask.png",
+      "gt_highlight_mask_binary_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ground_truth_highlight_mask_binary.png",
+      "mask_source": "input_rgba_alpha",
+      "methods": {
+        "dilightnet": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/proxy_competitors/preds/dilightnet/highlight_test_samples__khronos_specular_silk_pouf/pred_image/000_014_white_studio_05.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/dilightnet_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/dilightnet_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/dilightnet_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/dilightnet_highlight_mask_binary.png"
+        },
+        "rgbx": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/proxy_competitors/preds/rgbx/highlight_test_samples__khronos_specular_silk_pouf/pred_image/000_014_white_studio_05.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/rgbx_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/rgbx_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/rgbx_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/rgbx_highlight_mask_binary.png"
+        },
+        "baseline": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/preds/baseline/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/pred_image/000_014_white_studio_05.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/baseline_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/baseline_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/baseline_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/baseline_highlight_mask_binary.png"
+        },
+        "ours": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/preds/ours/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/pred_image/000_014_white_studio_05.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ours_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ours_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ours_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_specular_silk_pouf_v000_t014/ours_highlight_mask_binary.png"
+        }
+      }
+    },
+    {
+      "preset": "highlight_test_samebatch_onehdri",
+      "source_bucket": "standalone",
+      "dataset": "highlight_test_samples",
+      "object_id": "highlight_test_samples__khronos_chronograph_watch",
+      "plain_object_id": "khronos_chronograph_watch",
+      "view_idx": 0,
+      "target_lighting_index": 14,
+      "cond_lighting_index": null,
+      "image_split": "highlight_test",
+      "lighting_split": "highlight_test",
+      "input_mode": "random_lighting",
+      "env_name": "white_studio_02",
+      "target_file": "000_014_white_studio_02.png",
+      "input_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_chronograph_watch/random_lighting_000.png",
+      "gt_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_chronograph_watch/000_014_white_studio_02.png",
+      "target_lighting_ldr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/LDR/khronos_chronograph_watch/000_014_white_studio_02.png",
+      "target_lighting_hdr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/HDR_rescaled/khronos_chronograph_watch/000_014_white_studio_02.png",
+      "same_render_batch_verified": true,
+      "same_render_batch_source_kind": "standalone_render_raw",
+      "same_render_batch_resolution_policy": "native_512_same_batch",
+      "recommended_loader_resolution": 256,
+      "render_batch_root": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_chronograph_watch",
+      "input_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_chronograph_watch/random_lighting_000.png",
+      "gt_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_chronograph_watch/000_014_white_studio_02.png",
+      "input_source_size_wh": [
+        512,
+        512
+      ],
+      "gt_source_size_wh": [
+        512,
+        512
+      ],
+      "input_source_mode": "RGBA",
+      "gt_source_mode": "RGBA",
+      "size_verification_mode": "opened",
+      "material_family": null,
+      "highlight_reason": null,
+      "local_model_path": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/highlight_test_samples/khronos/ChronographWatch/glTF-Binary/ChronographWatch.glb",
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014",
+      "sample_dir": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014",
+      "input_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/input_white_bg.png",
+      "input_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/input_white_bg.png",
+      "input_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/input_composited.png",
+      "ground_truth_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ground_truth_white_bg.png",
+      "ground_truth_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ground_truth_white_bg.png",
+      "ground_truth_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ground_truth_composited.png",
+      "target_lighting_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/target_lighting.png",
+      "background_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/target_background.png",
+      "background_projected_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/target_background_projected.png",
+      "foreground_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/foreground_mask.png",
+      "gt_highlight_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ground_truth_highlight_mask.png",
+      "gt_highlight_mask_binary_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ground_truth_highlight_mask_binary.png",
+      "mask_source": "input_rgba_alpha",
+      "methods": {
+        "dilightnet": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/proxy_competitors/preds/dilightnet/highlight_test_samples__khronos_chronograph_watch/pred_image/000_014_white_studio_02.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/dilightnet_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/dilightnet_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/dilightnet_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/dilightnet_highlight_mask_binary.png"
+        },
+        "rgbx": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/proxy_competitors/preds/rgbx/highlight_test_samples__khronos_chronograph_watch/pred_image/000_014_white_studio_02.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/rgbx_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/rgbx_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/rgbx_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/rgbx_highlight_mask_binary.png"
+        },
+        "baseline": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/preds/baseline/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/pred_image/000_014_white_studio_02.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/baseline_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/baseline_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/baseline_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/baseline_highlight_mask_binary.png"
+        },
+        "ours": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/preds/ours/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/pred_image/000_014_white_studio_02.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ours_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ours_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ours_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_chronograph_watch_v000_t014/ours_highlight_mask_binary.png"
+        }
+      }
+    },
+    {
+      "preset": "highlight_test_samebatch_onehdri",
+      "source_bucket": "standalone",
+      "dataset": "highlight_test_samples",
+      "object_id": "highlight_test_samples__gso_threshold_porcelain_teapot_white",
+      "plain_object_id": "gso_threshold_porcelain_teapot_white",
+      "view_idx": 0,
+      "target_lighting_index": 1,
+      "cond_lighting_index": null,
+      "image_split": "highlight_test",
+      "lighting_split": "highlight_test",
+      "input_mode": "random_lighting",
+      "env_name": "studio_small_08",
+      "target_file": "000_001_studio_small_08.png",
+      "input_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/gso_threshold_porcelain_teapot_white/random_lighting_000.png",
+      "gt_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/gso_threshold_porcelain_teapot_white/000_001_studio_small_08.png",
+      "target_lighting_ldr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/LDR/gso_threshold_porcelain_teapot_white/000_001_studio_small_08.png",
+      "target_lighting_hdr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/HDR_rescaled/gso_threshold_porcelain_teapot_white/000_001_studio_small_08.png",
+      "same_render_batch_verified": true,
+      "same_render_batch_source_kind": "standalone_render_raw",
+      "same_render_batch_resolution_policy": "native_512_same_batch",
+      "recommended_loader_resolution": 256,
+      "render_batch_root": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/gso_threshold_porcelain_teapot_white",
+      "input_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/gso_threshold_porcelain_teapot_white/random_lighting_000.png",
+      "gt_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/gso_threshold_porcelain_teapot_white/000_001_studio_small_08.png",
+      "input_source_size_wh": [
+        512,
+        512
+      ],
+      "gt_source_size_wh": [
+        512,
+        512
+      ],
+      "input_source_mode": "RGBA",
+      "gt_source_mode": "RGBA",
+      "size_verification_mode": "opened",
+      "material_family": null,
+      "highlight_reason": null,
+      "local_model_path": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/highlight_test_samples/google_scanned_objects/Threshold_Porcelain_Teapot_White/meshes/model.obj",
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001",
+      "sample_dir": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001",
+      "input_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/input_white_bg.png",
+      "input_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/input_white_bg.png",
+      "input_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/input_composited.png",
+      "ground_truth_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ground_truth_white_bg.png",
+      "ground_truth_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ground_truth_white_bg.png",
+      "ground_truth_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ground_truth_composited.png",
+      "target_lighting_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/target_lighting.png",
+      "background_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/target_background.png",
+      "background_projected_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/target_background_projected.png",
+      "foreground_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/foreground_mask.png",
+      "gt_highlight_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ground_truth_highlight_mask.png",
+      "gt_highlight_mask_binary_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ground_truth_highlight_mask_binary.png",
+      "mask_source": "input_rgba_alpha",
+      "methods": {
+        "dilightnet": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/proxy_competitors/preds/dilightnet/highlight_test_samples__gso_threshold_porcelain_teapot_white/pred_image/000_001_studio_small_08.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/dilightnet_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/dilightnet_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/dilightnet_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/dilightnet_highlight_mask_binary.png"
+        },
+        "rgbx": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/proxy_competitors/preds/rgbx/highlight_test_samples__gso_threshold_porcelain_teapot_white/pred_image/000_001_studio_small_08.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/rgbx_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/rgbx_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/rgbx_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/rgbx_highlight_mask_binary.png"
+        },
+        "baseline": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/preds/baseline/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/pred_image/000_001_studio_small_08.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/baseline_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/baseline_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/baseline_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/baseline_highlight_mask_binary.png"
+        },
+        "ours": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/preds/ours/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/pred_image/000_001_studio_small_08.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ours_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ours_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ours_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__gso_threshold_porcelain_teapot_white_v000_t001/ours_highlight_mask_binary.png"
+        }
+      }
+    },
+    {
+      "preset": "highlight_test_samebatch_onehdri",
+      "source_bucket": "standalone",
+      "dataset": "highlight_test_samples",
+      "object_id": "highlight_test_samples__khronos_metal_rough_spheres_no_textures",
+      "plain_object_id": "khronos_metal_rough_spheres_no_textures",
+      "view_idx": 0,
+      "target_lighting_index": 2,
+      "cond_lighting_index": null,
+      "image_split": "highlight_test",
+      "lighting_split": "highlight_test",
+      "input_mode": "random_lighting",
+      "env_name": "interior",
+      "target_file": "000_002_interior.png",
+      "input_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_metal_rough_spheres_no_textures/random_lighting_000.png",
+      "gt_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_metal_rough_spheres_no_textures/000_002_interior.png",
+      "target_lighting_ldr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/LDR/khronos_metal_rough_spheres_no_textures/000_002_interior.png",
+      "target_lighting_hdr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/HDR_rescaled/khronos_metal_rough_spheres_no_textures/000_002_interior.png",
+      "same_render_batch_verified": true,
+      "same_render_batch_source_kind": "standalone_render_raw",
+      "same_render_batch_resolution_policy": "native_512_same_batch",
+      "recommended_loader_resolution": 256,
+      "render_batch_root": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_metal_rough_spheres_no_textures",
+      "input_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_metal_rough_spheres_no_textures/random_lighting_000.png",
+      "gt_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_metal_rough_spheres_no_textures/000_002_interior.png",
+      "input_source_size_wh": [
+        512,
+        512
+      ],
+      "gt_source_size_wh": [
+        512,
+        512
+      ],
+      "input_source_mode": "RGBA",
+      "gt_source_mode": "RGBA",
+      "size_verification_mode": "opened",
+      "material_family": null,
+      "highlight_reason": null,
+      "local_model_path": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/highlight_test_samples/khronos/MetalRoughSpheresNoTextures/glTF-Binary/MetalRoughSpheresNoTextures.glb",
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002",
+      "sample_dir": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002",
+      "input_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/input_white_bg.png",
+      "input_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/input_white_bg.png",
+      "input_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/input_composited.png",
+      "ground_truth_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ground_truth_white_bg.png",
+      "ground_truth_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ground_truth_white_bg.png",
+      "ground_truth_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ground_truth_composited.png",
+      "target_lighting_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/target_lighting.png",
+      "background_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/target_background.png",
+      "background_projected_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/target_background_projected.png",
+      "foreground_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/foreground_mask.png",
+      "gt_highlight_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ground_truth_highlight_mask.png",
+      "gt_highlight_mask_binary_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ground_truth_highlight_mask_binary.png",
+      "mask_source": "input_rgba_alpha",
+      "methods": {
+        "dilightnet": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/proxy_competitors/preds/dilightnet/highlight_test_samples__khronos_metal_rough_spheres_no_textures/pred_image/000_002_interior.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/dilightnet_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/dilightnet_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/dilightnet_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/dilightnet_highlight_mask_binary.png"
+        },
+        "rgbx": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/proxy_competitors/preds/rgbx/highlight_test_samples__khronos_metal_rough_spheres_no_textures/pred_image/000_002_interior.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/rgbx_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/rgbx_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/rgbx_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/rgbx_highlight_mask_binary.png"
+        },
+        "baseline": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/preds/baseline/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/pred_image/000_002_interior.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/baseline_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/baseline_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/baseline_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/baseline_highlight_mask_binary.png"
+        },
+        "ours": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/preds/ours/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/pred_image/000_002_interior.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ours_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ours_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ours_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00001/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_metal_rough_spheres_no_textures_v000_t002/ours_highlight_mask_binary.png"
+        }
+      }
+    },
+    {
+      "preset": "highlight_test_samebatch_onehdri",
+      "source_bucket": "standalone",
+      "dataset": "highlight_test_samples",
+      "object_id": "highlight_test_samples__khronos_toy_car",
+      "plain_object_id": "khronos_toy_car",
+      "view_idx": 0,
+      "target_lighting_index": 4,
+      "cond_lighting_index": null,
+      "image_split": "highlight_test",
+      "lighting_split": "highlight_test",
+      "input_mode": "random_lighting",
+      "env_name": "photo_studio_01",
+      "target_file": "000_004_photo_studio_01.png",
+      "input_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_toy_car/random_lighting_000.png",
+      "gt_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_toy_car/000_004_photo_studio_01.png",
+      "target_lighting_ldr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/LDR/khronos_toy_car/000_004_photo_studio_01.png",
+      "target_lighting_hdr_path": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples/HDR_rescaled/khronos_toy_car/000_004_photo_studio_01.png",
+      "same_render_batch_verified": true,
+      "same_render_batch_source_kind": "standalone_render_raw",
+      "same_render_batch_resolution_policy": "native_512_same_batch",
+      "recommended_loader_resolution": 256,
+      "render_batch_root": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_toy_car",
+      "input_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_toy_car/random_lighting_000.png",
+      "gt_source_path": "/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples/khronos_toy_car/000_004_photo_studio_01.png",
+      "input_source_size_wh": [
+        512,
+        512
+      ],
+      "gt_source_size_wh": [
+        512,
+        512
+      ],
+      "input_source_mode": "RGBA",
+      "gt_source_mode": "RGBA",
+      "size_verification_mode": "opened",
+      "material_family": null,
+      "highlight_reason": null,
+      "local_model_path": "/4T/CXY/Neural_Gaffer_original/external_sources/raw/highlight_test_samples/khronos/ToyCar/glTF-Binary/ToyCar.glb",
+      "sample_key": "highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004",
+      "sample_dir": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004",
+      "input_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/input_white_bg.png",
+      "input_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/input_white_bg.png",
+      "input_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/input_composited.png",
+      "ground_truth_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ground_truth_white_bg.png",
+      "ground_truth_white_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ground_truth_white_bg.png",
+      "ground_truth_composited_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ground_truth_composited.png",
+      "target_lighting_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/target_lighting.png",
+      "background_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/target_background.png",
+      "background_projected_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/target_background_projected.png",
+      "foreground_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/foreground_mask.png",
+      "gt_highlight_mask_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ground_truth_highlight_mask.png",
+      "gt_highlight_mask_binary_export": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ground_truth_highlight_mask_binary.png",
+      "mask_source": "input_rgba_alpha",
+      "methods": {
+        "dilightnet": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/proxy_competitors/preds/dilightnet/highlight_test_samples__khronos_toy_car/pred_image/000_004_photo_studio_01.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/dilightnet_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/dilightnet_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/dilightnet_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/dilightnet_highlight_mask_binary.png"
+        },
+        "rgbx": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/proxy_competitors/preds/rgbx/highlight_test_samples__khronos_toy_car/pred_image/000_004_photo_studio_01.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/rgbx_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/rgbx_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/rgbx_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/rgbx_highlight_mask_binary.png"
+        },
+        "baseline": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/preds/baseline/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/pred_image/000_004_photo_studio_01.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/baseline_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/baseline_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/baseline_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/baseline_highlight_mask_binary.png"
+        },
+        "ours": {
+          "source": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/preds/ours/_by_sample/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/pred_image/000_004_photo_studio_01.png",
+          "white_bg": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ours_white_bg.png",
+          "composited": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ours_composited.png",
+          "highlight_mask": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ours_highlight_mask.png",
+          "highlight_mask_binary": "/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1/comparison/shards/manifest_shard_00002/assets/highlight_test_samebatch_onehdri_highlight_test_samples__khronos_toy_car_v000_t004/ours_highlight_mask_binary.png"
+        }
+      }
+    }
+  ]
+}

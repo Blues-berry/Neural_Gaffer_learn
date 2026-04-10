@@ -1,0 +1,12 @@
+{
+  "methods": [
+    {
+      "name": "baseline",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/ours_single_v2"
+    },
+    {
+      "name": "ours",
+      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/0407_officialval_0403_04"
+    }
+  ]
+}

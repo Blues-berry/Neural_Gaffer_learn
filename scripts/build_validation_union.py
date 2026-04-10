@@ -80,10 +80,17 @@ def build_validation_union(output_dir: Path, sources: list[dict]):
         source_seen_ids = read_object_list(resolved["val_seen_list"])
         source_unseen_ids = read_object_list(resolved["val_unseen_list"])
 
+        # Validation roots store all objects under each lighting split.
+        # The seen/unseen JSON files define which object subset belongs to which evaluation split.
+        # So we need to link all object directories for both lighting splits, while only merging
+        # the split lists into val_seen/val_unseen manifests.
+        all_seen_split_objects = [p.name for p in source_seen_img.iterdir() if p.is_dir()]
+        all_unseen_split_objects = [p.name for p in source_unseen_img.iterdir() if p.is_dir()]
+
         added_seen = 0
         added_unseen = 0
 
-        for obj_id in source_seen_ids:
+        for obj_id in all_seen_split_objects:
             union_obj_id = f"{source_name}__{obj_id}"
             safe_link(source_seen_img / obj_id, seen_img_dir / union_obj_id)
             safe_link(source_seen_lighting / "LDR" / obj_id, seen_lighting_dir / "LDR" / union_obj_id)
@@ -91,10 +98,8 @@ def build_validation_union(output_dir: Path, sources: list[dict]):
             src_hdr_raw = source_seen_lighting / "HDR_raw" / obj_id
             if src_hdr_raw.exists():
                 safe_link(src_hdr_raw, seen_lighting_dir / "HDR_raw" / union_obj_id)
-            union_seen_ids.append(union_obj_id)
-            added_seen += 1
 
-        for obj_id in source_unseen_ids:
+        for obj_id in all_unseen_split_objects:
             union_obj_id = f"{source_name}__{obj_id}"
             safe_link(source_unseen_img / obj_id, unseen_img_dir / union_obj_id)
             safe_link(source_unseen_lighting / "LDR" / obj_id, unseen_lighting_dir / "LDR" / union_obj_id)
@@ -102,6 +107,14 @@ def build_validation_union(output_dir: Path, sources: list[dict]):
             src_hdr_raw = source_unseen_lighting / "HDR_raw" / obj_id
             if src_hdr_raw.exists():
                 safe_link(src_hdr_raw, unseen_lighting_dir / "HDR_raw" / union_obj_id)
+
+        for obj_id in source_seen_ids:
+            union_obj_id = f"{source_name}__{obj_id}"
+            union_seen_ids.append(union_obj_id)
+            added_seen += 1
+
+        for obj_id in source_unseen_ids:
+            union_obj_id = f"{source_name}__{obj_id}"
             union_unseen_ids.append(union_obj_id)
             added_unseen += 1
 

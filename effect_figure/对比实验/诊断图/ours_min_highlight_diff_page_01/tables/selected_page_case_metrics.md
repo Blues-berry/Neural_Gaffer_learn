@@ -1,0 +1,24 @@
+# Selected Case Metrics
+
+| case | method | full_psnr | full_ssim | lpips_full | highlight_psnr | highlight_rmse | highlight_mask_iou | highlight_centroid_distance | lpips_highlight_crop |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| khronos_specular_silk_pouf | white_studio_05 | Neural Gaffer | 4.4339 | 0.2100 | 0.6559 | 6.4839 | 0.4740 | 0.2222 | 0.0065 | 0.6336 |
+| khronos_chronograph_watch | white_studio_02 | Neural Gaffer | 4.7845 | 0.1413 | 0.6083 | 9.6087 | 0.3308 | 0.2995 | 0.0541 | 0.5703 |
+| gso_threshold_porcelain_teapot_white | studio_small_08 | Neural Gaffer | 3.9397 | 0.2787 | 0.5991 | 8.0512 | 0.3958 | 0.1802 | 0.0302 | 0.5043 |
+| khronos_metal_rough_spheres_no_textures | interior | Neural Gaffer | 9.1386 | 0.1871 | 0.5637 | 10.6616 | 0.2930 | 0.3699 | 0.0417 | 0.5637 |
+| khronos_toy_car | photo_studio_01 | Neural Gaffer | 5.9656 | 0.3916 | 0.6755 | 6.1156 | 0.4946 | 0.1303 | 0.0377 | 0.6755 |
+| khronos_specular_silk_pouf | white_studio_05 | DiLightNet | 11.4727 | 0.8623 | 0.2114 | 13.3049 | 0.2162 | 0.0371 | 0.0084 | 0.2114 |
+| khronos_chronograph_watch | white_studio_02 | DiLightNet | 9.0588 | 0.7941 | 0.3388 | 12.9417 | 0.2254 | 0.0738 | 0.1371 | 0.3388 |
+| gso_threshold_porcelain_teapot_white | studio_small_08 | DiLightNet | 11.1633 | 0.8707 | 0.3342 | 7.8265 | 0.4061 | 0.0099 | 0.0709 | 0.3342 |
+| khronos_metal_rough_spheres_no_textures | interior | DiLightNet | 4.9440 | 0.3532 | 0.6085 | 8.8287 | 0.3619 | 0.0424 | 0.0518 | 0.6085 |
+| khronos_toy_car | photo_studio_01 | DiLightNet | 8.3686 | 0.7750 | 0.4828 | 8.7243 | 0.3663 | 0.0838 | 0.1256 | 0.4828 |
+| khronos_specular_silk_pouf | white_studio_05 | RGB↔X | 11.3704 | 0.8533 | 0.2031 | 12.7861 | 0.2295 | 0.0440 | 0.0084 | 0.2031 |
+| khronos_chronograph_watch | white_studio_02 | RGB↔X | 9.0445 | 0.7995 | 0.3205 | 12.5084 | 0.2369 | 0.0749 | 0.1370 | 0.3205 |
+| gso_threshold_porcelain_teapot_white | studio_small_08 | RGB↔X | 10.5283 | 0.8523 | 0.3325 | 7.4734 | 0.4230 | 0.0103 | 0.0709 | 0.3325 |
+| khronos_metal_rough_spheres_no_textures | interior | RGB↔X | 4.6939 | 0.3339 | 0.6226 | 7.2718 | 0.4329 | 0.0416 | 0.0519 | 0.6226 |
+| khronos_toy_car | photo_studio_01 | RGB↔X | 8.4066 | 0.7978 | 0.4657 | 8.9940 | 0.3551 | 0.0880 | 0.1255 | 0.4657 |
+| khronos_specular_silk_pouf | white_studio_05 | Ours | 11.7454 | 0.8791 | 0.2162 | 16.2140 | 0.1546 | 0.0481 | 0.0086 | 0.2162 |
+| khronos_chronograph_watch | white_studio_02 | Ours | 9.0921 | 0.7762 | 0.3547 | 13.3773 | 0.2144 | 0.0729 | 0.1351 | 0.3547 |
+| gso_threshold_porcelain_teapot_white | studio_small_08 | Ours | 12.5118 | 0.8933 | 0.2744 | 12.1399 | 0.2472 | 0.0131 | 0.0701 | 0.2744 |
+| khronos_metal_rough_spheres_no_textures | interior | Ours | 5.4117 | 0.3722 | 0.6598 | 10.8854 | 0.2856 | 0.0460 | 0.0632 | 0.6598 |
+| khronos_toy_car | photo_studio_01 | Ours | 8.4236 | 0.7868 | 0.5003 | 9.2328 | 0.3454 | 0.0854 | 0.1257 | 0.5003 |

@@ -1,0 +1,5 @@
+method,label,foreground_psnr,foreground_ssim,lpips_foreground
+baseline,Neural Gaffer,7.4710,0.2882,0.6151
+ours,Ours,6.9318,0.6135,0.5425
+dilightnet,DiLightNet,6.8639,0.6224,0.5214
+rgbx,RGB↔X,6.7644,0.6174,0.5167
