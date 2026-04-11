@@ -67,6 +67,13 @@ logger = get_logger(__name__)
 # from parse_args import parse_args
 
 
+def log_before_accelerator(level: int, message: str):
+    try:
+        logging.getLogger(__name__).log(level, message)
+    except Exception:
+        pass
+
+
 BEST_PRE72K_PSNR_KEYS = (
     "PSNR/unseen_object_with_random_area_light_condition",
     "PSNR/unseen_object_with_unseen_envir",
@@ -95,7 +102,8 @@ def ensure_kornia_laplacian_compat():
     pyrdown = getattr(transform_module, "pyrdown", None)
     pyrup = getattr(kornia.geometry, "pyrup", None)
     if pyrdown is None or pyrup is None:
-        logger.warning(
+        log_before_accelerator(
+            logging.WARNING,
             "Skipping kornia compatibility patch because pyrdown/pyrup are unavailable; validation may still fail."
         )
         return
@@ -117,7 +125,10 @@ def ensure_kornia_laplacian_compat():
         return pyramid
 
     setattr(transform_module, "build_laplacian_pyramid", build_laplacian_pyramid)
-    logger.info("Patched kornia.geometry.transform.build_laplacian_pyramid for diffusers compatibility.")
+    log_before_accelerator(
+        logging.INFO,
+        "Patched kornia.geometry.transform.build_laplacian_pyramid for diffusers compatibility.",
+    )
 
 
 ensure_kornia_laplacian_compat()

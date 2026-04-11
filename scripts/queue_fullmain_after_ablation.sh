@@ -4,12 +4,12 @@ set -euo pipefail
 REPO_ROOT="/4T/CXY/Neural_Gaffer"
 cd "$REPO_ROOT"
 
-QUEUE_LOG_DIR="logs/neural_gaffer_training_fullmain_readyval"
+QUEUE_LOG_DIR="logs/launch"
 mkdir -p "$QUEUE_LOG_DIR"
 
 QUEUE_LOG="${QUEUE_LOG_DIR}/queue_fullmain_after_ablation_$(date +%Y%m%d_%H%M%S).log"
 FULLMAIN_LOG="${QUEUE_LOG_DIR}/fullmain_gpu0_$(date +%Y%m%d_%H%M%S).log"
-ABLATION_MASTER_LOG="logs/neural_gaffer_training_gpu1_highlight/ablation_master_20260327_111905.log"
+ABLATION_MASTER_LOG="logs/launch/ablation_master_20260327_111905.log"
 
 echo "[$(date -Iseconds)] queue watcher started" | tee -a "$QUEUE_LOG"
 echo "[$(date -Iseconds)] waiting for clean ablation project to finish" | tee -a "$QUEUE_LOG"
@@ -17,6 +17,10 @@ echo "[$(date -Iseconds)] tracking master log: ${ABLATION_MASTER_LOG}" | tee -a 
 
 while true; do
   if [ -f "$ABLATION_MASTER_LOG" ] && grep -q "ALL_DONE" "$ABLATION_MASTER_LOG"; then
+    break
+  fi
+  if ! pgrep -f "wandb_run_note abl05_full_main" >/dev/null 2>&1; then
+    echo "[$(date -Iseconds)] no active abl05 process found; continuing without ALL_DONE marker" | tee -a "$QUEUE_LOG"
     break
   fi
   sleep 120

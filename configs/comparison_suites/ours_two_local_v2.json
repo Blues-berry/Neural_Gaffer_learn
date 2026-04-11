@@ -2,11 +2,11 @@
   "methods": [
     {
       "name": "ours",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight/imgsoft-q88-gb10-r40-w2-g2-wu3k-80k-spuru_cosine_lowlr_a-0331-03"
+      "model_dir": "model_weights/neural_gaffer_model_cache/ours_single_v2"
     },
     {
       "name": "ours_full",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight"
+      "model_dir": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight"
     }
   ]
 }

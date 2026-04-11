@@ -1,6 +1,6 @@
 output_dir = logs/neural_gaffer_training_ecommerce_subset
-train_img_dir = /4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset
-train_lighting_dir = /4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset
-val_img_dir = /4T/CXY/Neural_Gaffer_original/validation_data/images/val_rendered_images_resized/validation
-val_lighting_dir = /4T/CXY/Neural_Gaffer_original/validation_data/lighting/val_preprocessed_environment_resized
+train_img_dir = /4T/CXY/Neural_Gaffer/external_data/neural_gaffer_original/training_data/images/training_img_data_ecommerce_subset
+train_lighting_dir = /4T/CXY/Neural_Gaffer/external_data/neural_gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset
+val_img_dir = /4T/CXY/Neural_Gaffer/external_data/neural_gaffer_original/validation_data/images/val_rendered_images_resized/validation
+val_lighting_dir = /4T/CXY/Neural_Gaffer/external_data/neural_gaffer_original/validation_data/lighting/val_preprocessed_environment_resized
 wandb_run_note = ecommerce

@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT="/4T/CXY/Neural_Gaffer"
 TORCHRUN="/4T/conda_envs/neural_gaffer_5090/bin/torchrun"
 PYTHON="/4T/conda_envs/neural_gaffer_5090/bin/python3.10"
-MASTER_LOG="$ROOT/logs/neural_gaffer_training_gpu1_highlight/ablation_master_20260327_111905.log"
-QUEUE_LOG_DIR="$ROOT/logs/neural_gaffer_training_gpu1_highlight"
+MASTER_LOG="$ROOT/logs/launch/ablation_master_20260327_111905.log"
+QUEUE_LOG_DIR="$ROOT/logs/launch"
 TRACKER_PROJECT="train_neural_gaffer_clean_ablation_0327"
 
 cd "$ROOT"
@@ -74,7 +74,7 @@ done
 if [[ -f "$MASTER_LOG" ]]; then
   if "$PYTHON" - <<'PY'
 from pathlib import Path
-path = Path("/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight/ablation_master_20260327_111905.log")
+path = Path("/4T/CXY/Neural_Gaffer/logs/launch/ablation_master_20260327_111905.log")
 text = path.read_text(encoding="utf-8", errors="ignore") if path.exists() else ""
 raise SystemExit(0 if "ALL_DONE" in text else 1)
 PY

@@ -390,7 +390,7 @@ def main():
         },
         "notes": [
             "baseline uses the corrected historical 7cn19b1e checkpoint from /dev/shm.",
-            "ours_full uses the strongest available local 80k checkpoint under logs/neural_gaffer_training_gpu1_highlight as a full-main-like local proxy.",
+            "ours_full uses the strongest available local 80k checkpoint under model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight as a full-main-like local proxy.",
         ],
     }
     dump_json(output_root / "experiment_summary.json", summary)

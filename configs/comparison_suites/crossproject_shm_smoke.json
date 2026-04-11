@@ -1,24 +1,24 @@
 {
   "methods": [
     {
-      "name": "10k",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
-      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/gpu1_highlight_10k/model.safetensors"
+      "name": "jbhdfvfc_ckpt80k",
+      "model_dir": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
     },
     {
-      "name": "7cn19b1e",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
-      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/baseline_7cn19b1e/model.safetensors"
+      "name": "baseline_0316_fallback",
+      "model_dir": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "model_weights/neural_gaffer_model_cache/baseline_0316_fallback__neural_gaffer_training0316/checkpoint-80000/model.safetensors"
     },
     {
       "name": "0316-80k",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
-      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/ng0316_80k/model.safetensors"
+      "model_dir": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "model_weights/neural_gaffer_model_cache/neural_gaffer_training0316/checkpoint-80000/model.safetensors"
     },
     {
       "name": "change1-20k",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
-      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/change1_20k/model.safetensors"
+      "model_dir": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "model_weights/neural_gaffer_model_cache/change1_ckpt20k__neural_gaffer_training_change1/checkpoint-20000/model.safetensors"
     }
   ]
 }

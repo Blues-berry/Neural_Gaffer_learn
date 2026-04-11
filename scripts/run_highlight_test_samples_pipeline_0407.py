@@ -8,8 +8,18 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ORIGINAL_ROOT = Path("/4T/CXY/Neural_Gaffer_original")
-ORIGINAL_RENDER_SCRIPTS = ORIGINAL_ROOT / "scripts" / "Objavarse_rendering"
+ORIGINAL_ASSETS_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_ORIGINAL_ASSETS_ROOT",
+        REPO_ROOT / "external_data" / "neural_gaffer_original",
+    )
+)
+ORIGINAL_RENDER_SCRIPTS = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_ORIGINAL_RENDER_SCRIPTS",
+        ORIGINAL_ASSETS_ROOT / "rendering_pipeline" / "Objavarse_rendering",
+    )
+)
 
 
 def parse_args():
@@ -21,31 +31,34 @@ def parse_args():
     )
     parser.add_argument(
         "--effects-root",
-        default="/4T/CXY/Neural_Gaffer/effects/0407/highlight_test_samples_samebatch_v1",
+        default=str(REPO_ROOT / "effects/0407/highlight_test_samples_samebatch_v1"),
     )
     parser.add_argument(
         "--object-manifest",
-        default="/4T/CXY/Neural_Gaffer_original/subdataset/standalone/highlight_test_samples/manifests/highlight_test_model_manifest.json",
+        default=str(
+            ORIGINAL_ASSETS_ROOT
+            / "subdataset/standalone/highlight_test_samples/manifests/highlight_test_model_manifest.json"
+        ),
     )
     parser.add_argument(
         "--raw-render-root",
-        default="/4T/CXY/Neural_Gaffer_original/external_sources/render_raw/highlight_test_samples",
+        default=str(ORIGINAL_ASSETS_ROOT / "external_sources/render_raw/highlight_test_samples"),
     )
     parser.add_argument(
         "--lighting-source-root",
-        default="/4T/CXY/Neural_Gaffer_original/objaverse_lighting_domains/ecommerce_product",
+        default=str(ORIGINAL_ASSETS_ROOT / "objaverse_lighting_domains/ecommerce_product"),
     )
     parser.add_argument(
         "--lighting-training-root",
-        default="/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_highlight_test_samples",
+        default=str(ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_highlight_test_samples"),
     )
     parser.add_argument(
         "--comparison-suite",
-        default="/4T/CXY/Neural_Gaffer/configs/comparison_suites/validation_samebatch_0407_baseline_vs_ours.json",
+        default=str(REPO_ROOT / "configs/comparison_suites/validation_samebatch_0407_baseline_vs_ours.json"),
     )
     parser.add_argument(
         "--ablation-suite-source",
-        default="/4T/CXY/Neural_Gaffer/configs/comparison_suites/validation_samebatch_0407_ablations_source.json",
+        default=str(REPO_ROOT / "configs/comparison_suites/validation_samebatch_0407_ablations_source.json"),
     )
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--workers-per-gpu", type=int, default=1)

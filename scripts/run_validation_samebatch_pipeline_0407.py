@@ -7,6 +7,12 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL_CACHE_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_MODEL_CACHE_ROOT",
+        REPO_ROOT / "model_weights" / "neural_gaffer_model_cache",
+    )
+)
 
 
 def parse_args():
@@ -44,7 +50,7 @@ def parse_args():
     parser.add_argument("--ground-truth-image-key", choices=["white", "composited"], default="composited")
     parser.add_argument("--visual-tag", default="input_white_methods_gt_hdrbg")
     parser.add_argument("--ablation-primary-method", default="officialval")
-    parser.add_argument("--cache-root", default="/home/ubuntu/neural_gaffer_model_cache")
+    parser.add_argument("--cache-root", default=str(DEFAULT_MODEL_CACHE_ROOT))
     parser.add_argument("--materialize-ablation-cache", action="store_true", default=True)
     parser.add_argument("--no-materialize-ablation-cache", dest="materialize_ablation_cache", action="store_false")
     return parser.parse_args()

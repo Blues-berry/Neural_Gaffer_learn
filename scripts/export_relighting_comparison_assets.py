@@ -18,6 +18,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 os.environ.setdefault("MPLCONFIGDIR", "/4T/tmp/matplotlib")
 os.environ.setdefault("XDG_CACHE_HOME", "/4T/tmp")
+ORIGINAL_ASSETS_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_ORIGINAL_ASSETS_ROOT",
+        REPO_ROOT / "external_data" / "neural_gaffer_original",
+    )
+)
 
 from dataset.foreground_mask_utils import fallback_white_background_mask, load_image_array, resolve_foreground_mask
 from scripts.assess_dataset_quality import compute_highlight_mask_from_rgb, normalize_rgb
@@ -30,6 +36,12 @@ RAW_ENV_SEARCH_ROOTS = [
     REPO_ROOT / "validation_data" / "lighting" / "val_preprocessed_environment_resized" / "seen_lighting" / "HDR_raw",
     REPO_ROOT / "validation_data" / "lighting" / "val_preprocessed_environment_resized" / "unseen_lighting" / "HDR_raw",
     REPO_ROOT / "training_data" / "lighting" / "training_lighting_data_subset" / "HDR_raw",
+    ORIGINAL_ASSETS_ROOT / "validation_data" / "lighting" / "val_preprocessed_environment_resized" / "seen_lighting" / "HDR_raw",
+    ORIGINAL_ASSETS_ROOT / "validation_data" / "lighting" / "val_preprocessed_environment_resized" / "unseen_lighting" / "HDR_raw",
+    ORIGINAL_ASSETS_ROOT / "training_data" / "lighting" / "training_lighting_data_official_2000" / "HDR_raw",
+    ORIGINAL_ASSETS_ROOT / "training_data" / "lighting" / "training_lighting_data_ecommerce_subset" / "HDR_raw",
+    ORIGINAL_ASSETS_ROOT / "training_data" / "lighting" / "training_lighting_data_three_future_standalone" / "HDR_raw",
+    ORIGINAL_ASSETS_ROOT / "training_data" / "lighting" / "training_lighting_data_landscape_subset" / "HDR_raw",
 ]
 
 

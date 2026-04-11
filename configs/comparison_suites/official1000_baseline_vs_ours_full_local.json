@@ -1,14 +1,14 @@
 {
   "methods": [
     {
-      "name": "baseline",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
-      "checkpoint_path": "/dev/shm/neural_gaffer_ckpt_cache/baseline_7cn19b1e/model.safetensors"
+      "name": "baseline_0316_fallback",
+      "model_dir": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "model_weights/neural_gaffer_model_cache/baseline_0316_fallback__neural_gaffer_training0316/checkpoint-80000/model.safetensors"
     },
     {
       "name": "ours_full",
-      "model_dir": "logs/neural_gaffer_training_gpu1_highlight",
-      "checkpoint_path": "logs/neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
+      "model_dir": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
     }
   ]
 }

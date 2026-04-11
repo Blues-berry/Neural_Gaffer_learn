@@ -16,8 +16,9 @@
 ## 当前仓库最重要的事实
 
 - 当前活跃仓库就是本目录 `Neural_Gaffer/`。
-- 同级目录 `../Neural_Gaffer_original/` 和 `../Neural_Gaffer_original_main_baseline/` 是历史快照/基线副本，不是当前主工作树。
-- 当前 README 以前长期停留在“上游开源说明”口径，已经不能准确反映本地实验、日志和论文材料状态；仓库现状请优先看 `docs/repo_status_2026-03-31.md`。
+- 同级目录 `../Neural_Gaffer_original/` 现在只作为原始代码工作树和正在运行的兼容入口保留；完整数据、raw render、外部 3D 源文件和原始 W&B/日志归档已经收敛到 `external_data/neural_gaffer_original/`。
+- 官方 baseline worktree 已迁入 `external/official_neural_gaffer_baseline/`；旧 `../Neural_Gaffer_original_main_baseline/` 兼容软链接已经删除。
+- 当前 README 只保留总入口；训练、推理、对比、消融和数据集的可执行参考请优先看 `docs/*_reference.md`。
 - 论文文档里频繁引用的 baseline `7cn19b1e` 是历史 W&B 结果口径，并不在当前本地 `wandb/` 缓存中；本地可核对的 run、checkpoint 与导出资产已经在状态文档中单独说明。
 
 ## 当前常用入口
@@ -64,17 +65,20 @@ accelerate launch --config_file configs/1_16fp.yaml neural_gaffer_training.py \
 | `dataset/` | 数据加载与前景掩码相关逻辑 |
 | `scripts/` | 预处理、验证、导出、对比图、外部基线脚本 |
 | `docs/` | 论文草稿、实验记录、图示、参考 PDF、归档模板 |
-| `logs/` | 训练输出、checkpoint、导出资产、中间实验产物 |
+| `logs/` | 当前训练输出、导出资产、中间实验产物 |
+| `model_weights/` | 论文复现和后续扩展需要保留的 checkpoint/cache |
 | `training_data/` | 本地训练数据入口 |
 | `validation_data/` | 本地验证数据入口 |
 | `external/` | 外部基线或第三方代码副本 |
 
 ## 推荐阅读顺序
 
-1. `docs/repo_status_2026-03-31.md`
-2. `docs/paper.md`
-3. `docs/paper_plan_cn.md`
-4. `docs/3.27三十八届图形仿真大会_experiment_and_figure_plan_cn.md`
+1. `docs/training_reference.md`
+2. `docs/inference_reference.md`
+3. `docs/comparison_reference.md`
+4. `docs/ablation_reference.md`
+5. `docs/dataset_reference.md`
+6. `docs/paper.md`
 
 ## 备注
 

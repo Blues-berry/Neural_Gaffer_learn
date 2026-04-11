@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
@@ -11,6 +12,12 @@ if str(REPO_ROOT) not in sys.path:
 
 
 READY_ROOT = REPO_ROOT / "logs" / "ready_subdatasets_20260328"
+ORIGINAL_ASSETS_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_ORIGINAL_ASSETS_ROOT",
+        REPO_ROOT / "external_data" / "neural_gaffer_original",
+    )
+)
 
 
 def read_object_list(path: str | None):
@@ -120,14 +127,18 @@ def build_presets():
                 },
                 {
                     "name": "official_2000",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_official_2000",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_official_2000",
+                    "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_official_2000"),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_official_2000"
+                    ),
                     "list_path": str(READY_ROOT / "official_2000" / "filtered_objects.txt"),
                 },
                 {
                     "name": "ecommerce",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset",
+                    "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_ecommerce_subset"),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_ecommerce_subset"
+                    ),
                     "list_path": str(READY_ROOT / "ecommerce" / "filtered_objects.txt"),
                 },
             ],
@@ -143,20 +154,28 @@ def build_presets():
                 },
                 {
                     "name": "official_2000",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_official_2000",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_official_2000",
+                    "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_official_2000"),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_official_2000"
+                    ),
                     "list_path": str(READY_ROOT / "official_2000" / "filtered_objects.txt"),
                 },
                 {
                     "name": "ecommerce_1000",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset",
+                    "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_ecommerce_subset"),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_ecommerce_subset"
+                    ),
                     "list_path": str(READY_ROOT / "ecommerce" / "filtered_objects.txt"),
                 },
                 {
                     "name": "three_future",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_three_future_standalone",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_three_future_standalone",
+                    "img_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_three_future_standalone"
+                    ),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_three_future_standalone"
+                    ),
                     "list_path": str(READY_ROOT / "three_future" / "filtered_objects.txt"),
                 },
             ],
@@ -172,26 +191,36 @@ def build_presets():
                 },
                 {
                     "name": "official_2000",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_official_2000",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_official_2000",
+                    "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_official_2000"),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_official_2000"
+                    ),
                     "list_path": str(READY_ROOT / "official_2000" / "filtered_objects.txt"),
                 },
                 {
                     "name": "ecommerce_1000",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset",
+                    "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_ecommerce_subset"),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_ecommerce_subset"
+                    ),
                     "list_path": str(READY_ROOT / "ecommerce" / "filtered_objects.txt"),
                 },
                 {
                     "name": "three_future",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_three_future_standalone",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_three_future_standalone",
+                    "img_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_three_future_standalone"
+                    ),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_three_future_standalone"
+                    ),
                     "list_path": str(READY_ROOT / "three_future" / "filtered_objects.txt"),
                 },
                 {
                     "name": "landscape",
-                    "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_landscape_subset",
-                    "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_landscape_subset",
+                    "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_landscape_subset"),
+                    "lighting_dir": str(
+                        ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_landscape_subset"
+                    ),
                     "list_path": str(READY_ROOT / "landscape" / "filtered_objects.txt"),
                 },
             ],

@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -9,17 +10,23 @@ from PIL import Image
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+ORIGINAL_ASSETS_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_ORIGINAL_ASSETS_ROOT",
+        REPO_ROOT / "external_data" / "neural_gaffer_original",
+    )
+)
 TARGET_IMAGE_PATTERN = re.compile(r"^(\d{3})_(\d{3})_(.+)\.png$")
 DEFAULT_DATASETS = ("official_2000", "ecommerce", "landscape")
 DEFAULT_RAW_ROOTS = {
-    "official_2000": Path("/4T/CXY/Neural_Gaffer_original/objaverse_jobs/official_2000/raw"),
-    "ecommerce": Path("/4T/CXY/Neural_Gaffer_original/objaverse_jobs/ecommerce/raw"),
-    "landscape": Path("/4T/CXY/Neural_Gaffer_original/objaverse_jobs/landscape/raw"),
+    "official_2000": ORIGINAL_ASSETS_ROOT / "objaverse_jobs/official_2000/raw",
+    "ecommerce": ORIGINAL_ASSETS_ROOT / "objaverse_jobs/ecommerce/raw",
+    "landscape": ORIGINAL_ASSETS_ROOT / "objaverse_jobs/landscape/raw",
 }
 DEFAULT_LIGHTING_ROOTS = {
-    "official_2000": Path("/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_official_2000"),
-    "ecommerce": Path("/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset"),
-    "landscape": Path("/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_landscape_subset"),
+    "official_2000": ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_official_2000",
+    "ecommerce": ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_ecommerce_subset",
+    "landscape": ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_landscape_subset",
 }
 ENV_PRIORITY = (
     "studio",

@@ -1,6 +1,7 @@
 .mp4
 logs/
 external_data/
+model_weights/
 effects/
 external/
 subdataset/

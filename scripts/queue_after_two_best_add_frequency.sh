@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="/4T/CXY/Neural_Gaffer"
 TORCHRUN="/4T/conda_envs/neural_gaffer_5090/bin/torchrun"
 PYTHON="/4T/conda_envs/neural_gaffer_5090/bin/python3.10"
-QUEUE_LOG_DIR="$ROOT/logs/neural_gaffer_training_gpu1_highlight"
+QUEUE_LOG_DIR="$ROOT/logs/launch"
 PREV_QUEUE_LOG_GLOB="$QUEUE_LOG_DIR/queue_after_abl05_two_best_*.log"
 TRACKER_PROJECT="train_neural_gaffer_clean_ablation_0327"
 

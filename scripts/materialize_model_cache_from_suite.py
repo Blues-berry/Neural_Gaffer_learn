@@ -1,10 +1,17 @@
 import argparse
 import json
+import os
 import subprocess
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL_CACHE_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_MODEL_CACHE_ROOT",
+        REPO_ROOT / "model_weights" / "neural_gaffer_model_cache",
+    )
+)
 
 
 def parse_args():
@@ -13,7 +20,7 @@ def parse_args():
     )
     parser.add_argument("--suite", required=True)
     parser.add_argument("--output-suite", required=True)
-    parser.add_argument("--cache-root", default="/home/ubuntu/neural_gaffer_model_cache")
+    parser.add_argument("--cache-root", default=str(DEFAULT_MODEL_CACHE_ROOT))
     parser.add_argument("--force-refresh", action="store_true")
     return parser.parse_args()
 

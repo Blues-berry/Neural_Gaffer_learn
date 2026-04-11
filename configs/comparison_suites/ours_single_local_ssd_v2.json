@@ -2,7 +2,7 @@
   "methods": [
     {
       "name": "ours",
-      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/ours_single_v2"
+      "model_dir": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/ours_single_v2"
     }
   ]
 }

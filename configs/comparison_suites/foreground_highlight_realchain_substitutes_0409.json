@@ -2,25 +2,25 @@
   "methods": [
     {
       "name": "baseline_0316_fallback",
-      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training0316",
-      "checkpoint_path": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training0316/checkpoint-80000/model.safetensors"
+      "model_dir": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/neural_gaffer_training0316",
+      "checkpoint_path": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/neural_gaffer_training0316/checkpoint-80000/model.safetensors"
     },
     {
       "name": "jbhdfvfc_ckpt80k",
-      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight",
-      "checkpoint_path": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
+      "model_dir": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight",
+      "checkpoint_path": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight/checkpoint-80000/model.safetensors"
     },
     {
       "name": "cosine0331_03",
-      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/ours_single_v2"
+      "model_dir": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/ours_single_v2"
     },
     {
       "name": "xkmlb19f_like_relative_fallback",
-      "model_dir": "/4T/CXY/Neural_Gaffer/logs/neural_gaffer_training_gpu1_highlight"
+      "model_dir": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight"
     },
     {
       "name": "officialval_0403_04",
-      "model_dir": "/home/ubuntu/neural_gaffer_model_cache/0407_officialval_0403_04"
+      "model_dir": "/4T/CXY/Neural_Gaffer/model_weights/neural_gaffer_model_cache/0407_officialval_0403_04"
     }
   ]
 }

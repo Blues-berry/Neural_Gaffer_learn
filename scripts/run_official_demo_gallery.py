@@ -12,8 +12,18 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OFFICIAL_REPO = Path("/4T/CXY/Neural_Gaffer_original_main_baseline")
-DEFAULT_CHECKPOINT_ROOT = Path("/4T/CXY/Neural_Gaffer_original/logs/neural_gaffer_res256")
+DEFAULT_OFFICIAL_REPO = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_OFFICIAL_BASELINE_REPO",
+        REPO_ROOT / "external" / "official_neural_gaffer_baseline",
+    )
+)
+DEFAULT_CHECKPOINT_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_OFFICIAL_CHECKPOINT_ROOT",
+        REPO_ROOT / "model_weights" / "neural_gaffer_model_cache" / "neural_gaffer_training0316",
+    )
+)
 DEFAULT_ZERO123_PATH = Path(
     "/4T/huggingface_cache/models--kxic--zero123-xl/snapshots/7d8aec2223b93e84eb26893d1e732e013523474b"
 )

@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import random
 import re
 from pathlib import Path
@@ -18,19 +19,27 @@ from dataset.foreground_mask_utils import fallback_white_background_mask, load_i
 
 
 TARGET_IMAGE_PATTERN = re.compile(r"^(\d{3})_(\d{3})_.+\.png$")
+ORIGINAL_ASSETS_ROOT = Path(
+    os.environ.get(
+        "NEURAL_GAFFER_ORIGINAL_ASSETS_ROOT",
+        REPO_ROOT / "external_data" / "neural_gaffer_original",
+    )
+)
 
 DATASET_REGISTRY = {
     "ecommerce": {
-        "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_ecommerce_subset",
-        "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_ecommerce_subset",
+        "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_ecommerce_subset"),
+        "lighting_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_ecommerce_subset"),
     },
     "landscape": {
-        "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_landscape_subset",
-        "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_landscape_subset",
+        "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_landscape_subset"),
+        "lighting_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_landscape_subset"),
     },
     "three_future": {
-        "img_dir": "/4T/CXY/Neural_Gaffer_original/training_data/images/training_img_data_three_future_standalone",
-        "lighting_dir": "/4T/CXY/Neural_Gaffer_original/training_data/lighting/training_lighting_data_three_future_standalone",
+        "img_dir": str(ORIGINAL_ASSETS_ROOT / "training_data/images/training_img_data_three_future_standalone"),
+        "lighting_dir": str(
+            ORIGINAL_ASSETS_ROOT / "training_data/lighting/training_lighting_data_three_future_standalone"
+        ),
     },
 }
 

@@ -62,7 +62,7 @@ def parse_args():
         description="Run a local Neural Gaffer checkpoint on a comparison manifest with training-aligned inference defaults."
     )
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--model-dir", default="logs/neural_gaffer_training_gpu1_highlight")
+    parser.add_argument("--model-dir", default="model_weights/neural_gaffer_model_cache/jbhdfvfc_ckpt80k__neural_gaffer_training_gpu1_highlight")
     parser.add_argument("--pretrained-model-name-or-path", default="kxic/zero123-xl")
     parser.add_argument("--revision", default=None)
     parser.add_argument("--checkpoint-path", default=None, help="Optional accelerate checkpoint containing model.safetensors.")
